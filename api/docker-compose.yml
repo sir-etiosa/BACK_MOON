@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moonxch
+      POSTGRES_PASSWORD: moonxch_dev_password
+      POSTGRES_DB: moonxch
+    ports:
+      - "5432:5432"
+    volumes:
+      - moonxch_pg_data:/var/lib/postgresql/data
+
+volumes:
+  moonxch_pg_data:

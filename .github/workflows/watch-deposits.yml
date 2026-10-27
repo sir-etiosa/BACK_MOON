@@ -1,0 +1,27 @@
+name: Watch for deposits
+
+# Triggers the API's cron-style deposit watchers on a schedule. GitHub documents scheduled
+# workflows as "best effort" — under load they can run a few minutes late. That's fine here;
+# we just need deposits detected within a few minutes, not to the second.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   API_BASE_URL  — e.g. https://your-app.vercel.app (no trailing slash)
+#   CRON_SECRET   — must match CRON_SECRET in the API's environment
+
+on:
+  schedule:
+    - cron: "*/2 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        chain: [evm, tron, ltc, btc]
+    steps:
+      - name: Poll ${{ matrix.chain }} watcher
+        run: |
+          curl -sf --max-time 60 \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.API_BASE_URL }}/cron/watch-${{ matrix.chain }}"
