@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
@@ -45,4 +46,16 @@ export async function buildApp() {
   await app.register(cronRoutes);
 
   return app;
+}
+
+// Vercel's zero-config Fastify detection calls this file's default export directly for
+// every request (it auto-detected "Fastify" from package.json and picked this file as the
+// entry point) — must be a function or server, built once and reused across invocations.
+let appPromise: ReturnType<typeof buildApp> | undefined;
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (!appPromise) appPromise = buildApp();
+  const app = await appPromise;
+  await app.ready();
+  app.server.emit("request", req, res);
 }
