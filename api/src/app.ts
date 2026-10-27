@@ -26,19 +26,30 @@ export async function buildApp() {
       },
     },
   });
-  // @fastify/swagger-ui's dependency chain (@fastify/static -> content-disposition) is
-  // ESM-only and breaks under Vercel's function bundler. Dynamic import, gated on Vercel's
-  // own env var, so that chain never even loads there — a static top-level import would
-  // still crash regardless of whether register() gets called. Full UI stays available in
-  // local dev; Vercel still serves the raw OpenAPI spec via @fastify/swagger alone.
-  if (!process.env.VERCEL) {
-    const swaggerUi = (await import("@fastify/swagger-ui")).default;
-    await app.register(swaggerUi, { routePrefix: "/docs" });
-  }
-
-  // Raw spec, no UI dependency — works everywhere, including Vercel where the UI plugin
-  // is skipped above. Paste this URL into https://editor.swagger.io for a browsable UI.
+  // Raw spec — no server-side UI plugin involved, so nothing here can hit the
+  // @fastify/static -> content-disposition ESM conflict that broke @fastify/swagger-ui
+  // under Vercel's bundler.
   app.get("/openapi.json", async () => app.swagger());
+
+  // Swagger UI is just static HTML/CSS/JS that fetches a spec URL in the browser — it
+  // doesn't need any server-side plugin at all. Loading it from a CDN sidesteps the
+  // broken dependency chain entirely and works identically locally and on Vercel.
+  app.get("/docs", async (_req, reply) => {
+    reply.type("text/html").send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>MoonXch API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script>
+    window.ui = SwaggerUIBundle({ url: "/openapi.json", dom_id: "#swagger-ui" });
+  </script>
+</body>
+</html>`);
+  });
 
   app.get("/health", async () => ({ ok: true }));
 

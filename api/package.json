@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
@@ -26,7 +28,6 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.1",
     "@fastify/swagger": "^9.9.2",
-    "@fastify/swagger-ui": "^6.1.2",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@prisma/client": "^5.20.0",
