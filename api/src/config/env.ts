@@ -6,6 +6,8 @@ const envSchema = z.object({
   APP_JWT_SECRET: z.string().min(16, "APP_JWT_SECRET must be set to a long random value"),
   PORT: z.coerce.number().default(4000),
   MAIL_TRANSPORT: z.enum(["console", "resend"]).default("console"),
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
   EVM_XPUB: z.string().optional(),
   TRON_XPUB: z.string().optional(),
   LTC_XPUB: z.string().optional(),

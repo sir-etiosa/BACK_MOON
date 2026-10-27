@@ -29,7 +29,11 @@ export async function requestLoginOtp(email: string): Promise<void> {
     data: { userId: user.id, codeHash, purpose: "LOGIN", expiresAt: otpExpiry() },
   });
 
-  await mailer.sendOtp(normalizedEmail, code);
+  await mailer.send(
+    normalizedEmail,
+    "Your MoonXch login code",
+    `Your login code is ${code}. It expires in 5 minutes.`,
+  );
 }
 
 export async function verifyLoginOtp(email: string, code: string, deviceInfo?: string) {
