@@ -36,6 +36,10 @@ export async function buildApp() {
     await app.register(swaggerUi, { routePrefix: "/docs" });
   }
 
+  // Raw spec, no UI dependency — works everywhere, including Vercel where the UI plugin
+  // is skipped above. Paste this URL into https://editor.swagger.io for a browsable UI.
+  app.get("/openapi.json", async () => app.swagger());
+
   app.get("/health", async () => ({ ok: true }));
 
   await app.register(authRoutes);
