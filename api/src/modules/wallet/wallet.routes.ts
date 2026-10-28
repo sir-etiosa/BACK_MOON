@@ -35,8 +35,10 @@ export async function walletRoutes(app: FastifyInstance) {
       const assets = await prisma.asset.findMany({ where: { isActive: true } });
       const balances = await Promise.all(
         assets.map(async (asset) => ({
+          id: asset.id,
           symbol: asset.symbol,
           chain: asset.chain,
+          decimals: asset.decimals,
           balance: (await getBalance(req.userId!, asset.id)).toString(),
         })),
       );
