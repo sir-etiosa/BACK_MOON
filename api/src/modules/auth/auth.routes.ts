@@ -63,7 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
         reply.setCookie(REFRESH_COOKIE, refreshToken, {
           httpOnly: true,
           secure: true,
-          sameSite: "strict",
+          sameSite: "none",
           path: "/auth",
         });
         return reply.send({ accessToken });
@@ -90,7 +90,7 @@ export async function authRoutes(app: FastifyInstance) {
         reply.setCookie(REFRESH_COOKIE, next, {
           httpOnly: true,
           secure: true,
-          sameSite: "strict",
+          sameSite: "none",
           path: "/auth",
         });
         return reply.send({ accessToken });
