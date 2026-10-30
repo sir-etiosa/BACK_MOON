@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, clearToken, type Balance } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -51,9 +52,12 @@ export default function DashboardPage() {
           <Image src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
           <span className="text-sm font-bold tracking-tight">MOONXCH</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          Log out
-        </Button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            Log out
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
