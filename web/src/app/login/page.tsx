@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Image from "next/image";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api, setToken, ApiError } from "@/lib/api";
@@ -47,64 +46,79 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">MoonXch</CardTitle>
-          <CardDescription>
-            {step === "email" ? "Enter your email to sign in or sign up" : `Enter the code sent to ${email}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+    <div className="flex min-h-screen flex-col items-center justify-center px-6">
+      <div className="flex w-full max-w-[340px] flex-col gap-10">
+        <div className="flex items-center gap-2.5">
+          <Image src="/logo.png" alt="" width={32} height={32} className="rounded-md" />
+          <div className="flex flex-col leading-none">
+            <span className="text-sm font-bold tracking-tight">MOONXCH</span>
+            <span className="label-eyebrow mt-0.5">Exchange</span>
+          </div>
+        </div>
 
-          {step === "email" ? (
-            <form onSubmit={handleRequestOtp} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Sending..." : "Send code"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="code">6-digit code</Label>
-                <Input
-                  id="code"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="000000"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Verifying..." : "Verify & sign in"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setStep("email")} className="w-full">
-                Use a different email
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-3xl leading-tight font-bold tracking-tight">
+            {step === "email" ? (
+              <>
+                Deposit, swap, <span className="text-primary">cash out.</span>
+              </>
+            ) : (
+              "Enter your code."
+            )}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            {step === "email" ? "Sign in or create an account with your email." : `Sent to ${email}`}
+          </p>
+        </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {step === "email" ? (
+          <form onSubmit={handleRequestOtp} className="flex flex-col gap-3">
+            <span className="label-eyebrow">Email</span>
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+              className="h-11"
+            />
+            <Button type="submit" disabled={loading} className="mt-1 h-11 font-semibold">
+              {loading ? "Sending..." : "Continue"}
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp} className="flex flex-col gap-3">
+            <span className="label-eyebrow">6-digit code</span>
+            <Input
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+              autoFocus
+              className="h-11 font-mono text-lg tracking-[0.3em]"
+            />
+            <Button type="submit" disabled={loading} className="mt-1 h-11 font-semibold">
+              {loading ? "Verifying..." : "Verify & sign in"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setStep("email")}
+              className="text-muted-foreground hover:text-foreground py-1 text-sm transition-colors"
+            >
+              Use a different email
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

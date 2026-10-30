@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * MoonXch design system — violet and gold, adapted from the moonriver.fun reference.
+ * Deep violet-black ground, violet carries structure/links, gold carries value and action.
+ * Coral is the only antagonist (errors). Hairline dividers over boxed cards; mono small-caps
+ * for labels; tabular numbers for anything that's data.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -48,75 +54,83 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* MoonXch brand: dark purple + yellow. Light mode kept as a usable fallback,
-   but the product defaults to dark (see <html className="dark"> in layout.tsx). */
 :root {
-  --background: oklch(0.99 0.005 300);
-  --foreground: oklch(0.18 0.03 300);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.03 300);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.03 300);
-  --primary: oklch(0.75 0.17 95);
-  --primary-foreground: oklch(0.18 0.03 300);
-  --secondary: oklch(0.94 0.02 300);
-  --secondary-foreground: oklch(0.25 0.04 300);
-  --muted: oklch(0.95 0.01 300);
-  --muted-foreground: oklch(0.5 0.02 300);
-  --accent: oklch(0.93 0.05 300);
-  --accent-foreground: oklch(0.25 0.06 300);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.01 300);
-  --input: oklch(0.9 0.01 300);
-  --ring: oklch(0.75 0.17 95);
-  --chart-1: oklch(0.75 0.17 95);
-  --chart-2: oklch(0.55 0.12 300);
-  --chart-3: oklch(0.65 0.15 320);
-  --chart-4: oklch(0.45 0.08 300);
-  --chart-5: oklch(0.8 0.1 90);
+  --background: #f7f5fb;
+  --foreground: #1a1430;
+  --card: #ffffff;
+  --card-foreground: #1a1430;
+  --popover: #ffffff;
+  --popover-foreground: #1a1430;
+  --primary: #c9962c;
+  --primary-foreground: #0b0818;
+  --secondary: #ece6fa;
+  --secondary-foreground: #1a1430;
+  --muted: #ece6fa;
+  --muted-foreground: #6b6082;
+  --accent: #e4d9ff;
+  --accent-foreground: #1a1430;
+  --destructive: #d9503f;
+  --border: #ddd4f0;
+  --input: #ddd4f0;
+  --ring: #c9962c;
+  --chart-1: #c9962c;
+  --chart-2: #9d5cff;
+  --chart-3: #4ed9a4;
+  --chart-4: #7a6f9a;
+  --chart-5: #ffd24a;
   --radius: 0.625rem;
-  --sidebar: oklch(0.97 0.01 300);
-  --sidebar-foreground: oklch(0.18 0.03 300);
-  --sidebar-primary: oklch(0.75 0.17 95);
-  --sidebar-primary-foreground: oklch(0.18 0.03 300);
-  --sidebar-accent: oklch(0.93 0.05 300);
-  --sidebar-accent-foreground: oklch(0.25 0.06 300);
-  --sidebar-border: oklch(0.9 0.01 300);
-  --sidebar-ring: oklch(0.75 0.17 95);
+  --sidebar: #ece6fa;
+  --sidebar-foreground: #1a1430;
+  --sidebar-primary: #c9962c;
+  --sidebar-primary-foreground: #0b0818;
+  --sidebar-accent: #e4d9ff;
+  --sidebar-accent-foreground: #1a1430;
+  --sidebar-border: #ddd4f0;
+  --sidebar-ring: #c9962c;
 }
 
+/* The product is dark-first — see <html className="dark"> in layout.tsx. */
 .dark {
-  --background: oklch(0.16 0.03 300);
-  --foreground: oklch(0.97 0.005 300);
-  --card: oklch(0.21 0.035 300);
-  --card-foreground: oklch(0.97 0.005 300);
-  --popover: oklch(0.21 0.035 300);
-  --popover-foreground: oklch(0.97 0.005 300);
-  --primary: oklch(0.84 0.17 95);
-  --primary-foreground: oklch(0.16 0.03 300);
-  --secondary: oklch(0.3 0.045 300);
-  --secondary-foreground: oklch(0.97 0.005 300);
-  --muted: oklch(0.26 0.03 300);
-  --muted-foreground: oklch(0.68 0.02 300);
-  --accent: oklch(0.32 0.06 300);
-  --accent-foreground: oklch(0.97 0.005 300);
-  --destructive: oklch(0.7 0.19 22);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.84 0.17 95 / 60%);
-  --chart-1: oklch(0.84 0.17 95);
-  --chart-2: oklch(0.6 0.13 300);
-  --chart-3: oklch(0.7 0.15 320);
-  --chart-4: oklch(0.45 0.08 300);
-  --chart-5: oklch(0.88 0.12 90);
-  --sidebar: oklch(0.19 0.03 300);
-  --sidebar-foreground: oklch(0.97 0.005 300);
-  --sidebar-primary: oklch(0.84 0.17 95);
-  --sidebar-primary-foreground: oklch(0.16 0.03 300);
-  --sidebar-accent: oklch(0.3 0.045 300);
-  --sidebar-accent-foreground: oklch(0.97 0.005 300);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.84 0.17 95 / 50%);
+  --background: #0b0818;
+  --foreground: #ece6fa;
+  --card: #150f26;
+  --card-foreground: #ece6fa;
+  --popover: #150f26;
+  --popover-foreground: #ece6fa;
+  --primary: #ffd24a;
+  --primary-foreground: #0b0818;
+  --secondary: #1f1735;
+  --secondary-foreground: #ece6fa;
+  --muted: #1f1735;
+  --muted-foreground: #a69cc4;
+  --accent: #1f1735;
+  --accent-foreground: #ece6fa;
+  --destructive: #f2705f;
+  --border: rgba(216, 206, 245, 0.14);
+  --input: rgba(216, 206, 245, 0.14);
+  --ring: #ffd24a;
+  --chart-1: #ffd24a;
+  --chart-2: #9d5cff;
+  --chart-3: #4ed9a4;
+  --chart-4: #7a6f9a;
+  --chart-5: #c9962c;
+  --sidebar: #0b0818;
+  --sidebar-foreground: #ece6fa;
+  --sidebar-primary: #ffd24a;
+  --sidebar-primary-foreground: #0b0818;
+  --sidebar-accent: #1f1735;
+  --sidebar-accent-foreground: #ece6fa;
+  --sidebar-border: rgba(216, 206, 245, 0.14);
+  --sidebar-ring: #ffd24a;
+}
+
+@utility label-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
 }
 
 @layer base {
@@ -128,5 +142,13 @@
   }
   html {
     @apply font-sans;
+  }
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
 }

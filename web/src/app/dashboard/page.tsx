@@ -2,40 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { api, getToken, clearToken } from "@/lib/api";
+import { api, getToken, clearToken, type Balance } from "@/lib/api";
+import { fromSmallestUnits } from "@/lib/units";
+import { cn } from "@/lib/utils";
 
-interface Balance {
-  symbol: string;
-  chain: string;
-  balance: string;
-}
-
-interface AddressRow {
-  chain: string;
-  address: string | null;
-  error: string | null;
-}
+const ASSET_COLOR: Record<string, string> = {
+  BTC: "bg-[#ffd24a] text-[#0b0818]",
+  ETH: "bg-[#9d5cff] text-white",
+  LTC: "bg-[#a69cc4] text-[#0b0818]",
+  SOL: "bg-[#4ed9a4] text-[#0b0818]",
+  XMR: "bg-[#f2705f] text-white",
+  USDT: "bg-[#4ed9a4] text-[#0b0818]",
+};
 
 export default function DashboardPage() {
   const router = useRouter();
   const [balances, setBalances] = useState<Balance[] | null>(null);
-  const [addresses, setAddresses] = useState<AddressRow[] | null>(null);
 
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
       return;
     }
-    Promise.all([api.getBalances(), api.getAddresses()])
-      .then(([b, a]) => {
-        setBalances(b.balances);
-        setAddresses(a.addresses);
-      })
+    api
+      .getBalances()
+      .then((r) => setBalances(r.balances))
       .catch(() => {
         clearToken();
         router.push("/login");
@@ -50,72 +45,58 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 p-4 pt-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">MoonXch</h1>
+    <div className="mx-auto flex min-h-screen max-w-md flex-col gap-8 px-5 pb-16 pt-6">
+      <div className="border-border flex items-center justify-between border-b pb-4">
+        <div className="flex items-center gap-2.5">
+          <Image src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
+          <span className="text-sm font-bold tracking-tight">MOONXCH</span>
+        </div>
         <Button variant="ghost" size="sm" onClick={handleLogout}>
           Log out
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Balances</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {!balances ? (
-            <>
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-            </>
-          ) : (
-            balances.map((b, i) => (
-              <div key={b.symbol}>
-                <div className="flex items-center justify-between py-1">
-                  <span className="font-medium">{b.symbol}</span>
-                  <span className="text-muted-foreground tabular-nums">{b.balance}</span>
-                </div>
-                {i < balances.length - 1 && <Separator />}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-3 gap-3">
+        <Link href="/deposit" className={buttonVariants({ variant: "secondary", className: "h-11 font-semibold" })}>
+          Receive
+        </Link>
+        <Link href="/swap" className={buttonVariants({ className: "h-11 font-semibold" })}>
+          Swap
+        </Link>
+        <Link href="/withdraw" className={buttonVariants({ variant: "secondary", className: "h-11 font-semibold" })}>
+          Withdraw
+        </Link>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Deposit addresses</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {!addresses ? (
-            <>
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </>
-          ) : (
-            addresses.map((a) => (
-              <div key={a.chain} className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="uppercase">
-                    {a.chain}
-                  </Badge>
-                  {a.error && (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      not available
-                    </Badge>
-                  )}
-                </div>
-                {a.address ? (
-                  <code className="bg-muted rounded-md px-2 py-1 text-xs break-all">{a.address}</code>
-                ) : (
-                  <p className="text-muted-foreground text-xs">{a.error}</p>
+      <section className="flex flex-col gap-1">
+        <h2 className="label-eyebrow mb-2">Balances</h2>
+        {!balances ? (
+          <div className="flex flex-col gap-px">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : (
+          balances.map((b, i) => (
+            <div key={b.id} className={cn("flex items-center gap-3 py-3", i > 0 && "border-border border-t")}>
+              <div
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold",
+                  ASSET_COLOR[b.symbol] ?? "bg-muted text-muted-foreground",
                 )}
+              >
+                {b.symbol.slice(0, 1)}
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+              <div className="flex flex-1 items-center justify-between">
+                <span className="font-medium">{b.symbol}</span>
+                <span data-numeric className="font-mono text-sm">
+                  {fromSmallestUnits(b.balance, b.decimals)}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
     </div>
   );
 }

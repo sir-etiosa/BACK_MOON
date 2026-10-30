@@ -42,11 +42,40 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+export interface Balance {
+  id: string;
+  symbol: string;
+  chain: string;
+  decimals: number;
+  balance: string;
+}
+
+export interface Withdrawal {
+  id: string;
+  assetId: string;
+  toAddress: string;
+  amount: string;
+  status: "PENDING" | "APPROVED" | "SENT" | "CONFIRMED" | "REJECTED";
+  txHash: string | null;
+  requestedAt: string;
+}
+
 export const api = {
   requestOtp: (email: string) => request<{ ok: true }>("/auth/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     request<{ accessToken: string }>("/auth/otp/verify", { method: "POST", body: JSON.stringify({ email, code }) }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
   getAddresses: () => request<{ addresses: { chain: string; address: string | null; error: string | null }[] }>("/wallet/addresses"),
-  getBalances: () => request<{ balances: { symbol: string; chain: string; balance: string }[] }>("/wallet/balances"),
+  getBalances: () => request<{ balances: Balance[] }>("/wallet/balances"),
+  swap: (assetFromId: string, amountFrom: string, assetToId: string) =>
+    request<{ trade: unknown; amountTo: string }>("/trade/swap", {
+      method: "POST",
+      body: JSON.stringify({ assetFromId, amountFrom, assetToId }),
+    }),
+  requestWithdrawal: (assetId: string, amount: string, toAddress: string) =>
+    request<{ withdrawal: Withdrawal }>("/withdrawals", {
+      method: "POST",
+      body: JSON.stringify({ assetId, amount, toAddress }),
+    }),
+  getWithdrawals: () => request<{ withdrawals: Withdrawal[] }>("/withdrawals"),
 };
