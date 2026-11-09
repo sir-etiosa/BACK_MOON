@@ -1,7 +1,7 @@
 import { env } from "../../config/env.js";
 
 export interface Mailer {
-  send(email: string, subject: string, text: string): Promise<void>;
+  send(email: string, subject: string, text: string, html?: string): Promise<void>;
 }
 
 class ConsoleMailer implements Mailer {
@@ -12,7 +12,7 @@ class ConsoleMailer implements Mailer {
 }
 
 class ResendMailer implements Mailer {
-  async send(email: string, subject: string, text: string): Promise<void> {
+  async send(email: string, subject: string, text: string, html?: string): Promise<void> {
     if (!env.RESEND_API_KEY) throw new Error("RESEND_API_KEY not set");
     const from = env.MAIL_FROM ?? "onboarding@resend.dev";
 
@@ -22,7 +22,7 @@ class ResendMailer implements Mailer {
         Authorization: `Bearer ${env.RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: email, subject, text }),
+      body: JSON.stringify({ from, to: email, subject, text, ...(html ? { html } : {}) }),
     });
 
     if (!res.ok) {

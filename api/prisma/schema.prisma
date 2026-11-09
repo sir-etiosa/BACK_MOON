@@ -45,11 +45,14 @@ enum LedgerRefType {
 }
 
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  emailVerifiedAt DateTime?
-  status          String    @default("active")
-  createdAt       DateTime  @default(now())
+  id                     String    @id @default(uuid())
+  email                  String    @unique
+  emailVerifiedAt        DateTime?
+  status                 String    @default("active")
+  createdAt              DateTime  @default(now())
+  passwordHash           String?
+  passwordFailedAttempts Int       @default(0)
+  passwordLockedUntil    DateTime?
 
   sessions        Session[]
   otps            AuthOtp[]

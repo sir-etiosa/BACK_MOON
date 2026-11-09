@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { loginOtpEmail, welcomeOtpEmail } from "../../email/templates.js";
 import { mailer } from "./mailer.js";
 import { OTP_MAX_ATTEMPTS, generateOtpCode, hashOtpCode, otpExpiry, verifyOtpCode } from "./otp.util.js";
 import { createSession } from "./session.service.js";
@@ -8,11 +10,21 @@ const RESEND_COOLDOWN_MS = 30 * 1000;
 export async function requestLoginOtp(email: string): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
 
-  const user = await prisma.user.upsert({
-    where: { email: normalizedEmail },
-    create: { email: normalizedEmail },
-    update: {},
-  });
+  // Try create first (atomic, race-safe) so we can tell a brand-new signup from a
+  // returning user without a separate read-then-write that two concurrent requests
+  // could both see as "doesn't exist yet".
+  let user;
+  let isNewUser = true;
+  try {
+    user = await prisma.user.create({ data: { email: normalizedEmail } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      isNewUser = false;
+      user = await prisma.user.findUniqueOrThrow({ where: { email: normalizedEmail } });
+    } else {
+      throw err;
+    }
+  }
 
   const recent = await prisma.authOtp.findFirst({
     where: { userId: user.id, purpose: "LOGIN" },
@@ -29,11 +41,8 @@ export async function requestLoginOtp(email: string): Promise<void> {
     data: { userId: user.id, codeHash, purpose: "LOGIN", expiresAt: otpExpiry() },
   });
 
-  await mailer.send(
-    normalizedEmail,
-    "Your MoonXch login code",
-    `Your login code is ${code}. It expires in 5 minutes.`,
-  );
+  const { subject, text, html } = isNewUser ? welcomeOtpEmail(code) : loginOtpEmail(code);
+  await mailer.send(normalizedEmail, subject, text, html);
 }
 
 export async function verifyLoginOtp(email: string, code: string, deviceInfo?: string) {
@@ -61,5 +70,6 @@ export async function verifyLoginOtp(email: string, code: string, deviceInfo?: s
     await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
   }
 
-  return createSession(user.id, deviceInfo);
+  const session = await createSession(user.id, deviceInfo);
+  return { ...session, needsPassword: !user.passwordHash };
 }

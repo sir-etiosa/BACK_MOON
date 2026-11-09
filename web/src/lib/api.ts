@@ -1,5 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 const TOKEN_KEY = "moonxch_access_token";
+const LAST_EMAIL_KEY = "moonxch_last_email";
+const LOGGED_OUT_KEY = "moonxch_explicit_logout";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -14,6 +16,28 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getLastEmail(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(LAST_EMAIL_KEY);
+}
+
+export function setLastEmail(email: string): void {
+  localStorage.setItem(LAST_EMAIL_KEY, email);
+}
+
+export function wasExplicitLogout(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(LOGGED_OUT_KEY) === "1";
+}
+
+export function markExplicitLogout(): void {
+  localStorage.setItem(LOGGED_OUT_KEY, "1");
+}
+
+export function clearExplicitLogout(): void {
+  localStorage.removeItem(LOGGED_OUT_KEY);
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -23,7 +47,20 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function tryRefresh(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { accessToken?: string };
+    if (!body.accessToken) return null;
+    setToken(body.accessToken);
+    return body.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}, isRetry = false): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -35,8 +72,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
 
+  if (res.status === 401 && token && !isRetry) {
+    const refreshed = await tryRefresh();
+    if (refreshed) return request<T>(path, init, true);
+  }
+
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status === 401) clearToken();
     throw new ApiError(res.status, body.error ?? `Request failed (${res.status})`);
   }
   return body as T;
@@ -48,6 +91,7 @@ export interface Balance {
   chain: string;
   decimals: number;
   balance: string;
+  usdValue: string | null;
 }
 
 export interface Withdrawal {
@@ -61,12 +105,28 @@ export interface Withdrawal {
 }
 
 export const api = {
+  refresh: tryRefresh,
+  identify: (email: string) =>
+    request<{ exists: boolean; hasPassword: boolean }>("/auth/identify", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  loginWithPassword: (email: string, password: string) =>
+    request<{ accessToken: string }>("/auth/password/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  setPassword: (password: string) =>
+    request<{ ok: true }>("/auth/password/set", { method: "POST", body: JSON.stringify({ password }) }),
   requestOtp: (email: string) => request<{ ok: true }>("/auth/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
-    request<{ accessToken: string }>("/auth/otp/verify", { method: "POST", body: JSON.stringify({ email, code }) }),
+    request<{ accessToken: string; needsPassword: boolean }>("/auth/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
   getAddresses: () => request<{ addresses: { chain: string; address: string | null; error: string | null }[] }>("/wallet/addresses"),
-  getBalances: () => request<{ balances: Balance[] }>("/wallet/balances"),
+  getBalances: () => request<{ balances: Balance[]; ngnRate: number | null }>("/wallet/balances"),
   swap: (assetFromId: string, amountFrom: string, assetToId: string) =>
     request<{ trade: unknown; amountTo: string }>("/trade/swap", {
       method: "POST",

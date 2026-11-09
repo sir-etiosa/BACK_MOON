@@ -1,12 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requestLoginOtp, verifyLoginOtp } from "./otp.service.js";
+import { identify, loginWithPassword, setPassword } from "./password.service.js";
+import { requireAuth } from "./require-auth.js";
 import { rotateSession, revokeSession } from "./session.service.js";
 
 const REFRESH_COOKIE = "moonxch_refresh";
 
 const emailSchema = z.object({ email: z.string().email() });
 const verifySchema = z.object({ email: z.string().email(), code: z.string().length(6) });
+const passwordLoginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const passwordSetSchema = z.object({ password: z.string().min(8) });
 
 const emailBodyJsonSchema = {
   type: "object",
@@ -15,6 +19,88 @@ const emailBodyJsonSchema = {
 };
 
 export async function authRoutes(app: FastifyInstance) {
+  app.post(
+    "/auth/identify",
+    {
+      schema: {
+        tags: ["auth"],
+        summary: "Check whether an email is registered and has a password set",
+        body: emailBodyJsonSchema,
+        response: {
+          200: {
+            type: "object",
+            properties: { exists: { type: "boolean" }, hasPassword: { type: "boolean" } },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { email } = emailSchema.parse(req.body);
+      const result = await identify(email);
+      return reply.send(result);
+    },
+  );
+
+  app.post(
+    "/auth/password/login",
+    {
+      schema: {
+        tags: ["auth"],
+        summary: "Log in with email + password (only once a password is set)",
+        body: {
+          type: "object",
+          required: ["email", "password"],
+          properties: { email: { type: "string", format: "email" }, password: { type: "string" } },
+        },
+        response: {
+          200: { type: "object", properties: { accessToken: { type: "string" } } },
+          "4xx": { type: "object", properties: { error: { type: "string" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { email, password } = passwordLoginSchema.parse(req.body);
+      try {
+        const { accessToken, refreshToken } = await loginWithPassword(email, password, req.headers["user-agent"]);
+        reply.setCookie(REFRESH_COOKIE, refreshToken, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          path: "/auth",
+        });
+        return reply.send({ accessToken });
+      } catch (err) {
+        return reply.code(401).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.post(
+    "/auth/password/set",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["auth"],
+        summary: "Set this (already-authenticated) user's password",
+        security: [{ bearerAuth: [] }],
+        body: { type: "object", required: ["password"], properties: { password: { type: "string", minLength: 8 } } },
+        response: {
+          200: { type: "object", properties: { ok: { type: "boolean" } } },
+          "4xx": { type: "object", properties: { error: { type: "string" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { password } = passwordSetSchema.parse(req.body);
+      try {
+        await setPassword(req.userId!, password);
+        return reply.send({ ok: true });
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
   app.post(
     "/auth/otp/request",
     {
@@ -51,7 +137,10 @@ export async function authRoutes(app: FastifyInstance) {
           },
         },
         response: {
-          200: { type: "object", properties: { accessToken: { type: "string" } } },
+          200: {
+            type: "object",
+            properties: { accessToken: { type: "string" }, needsPassword: { type: "boolean" } },
+          },
           "4xx": { type: "object", properties: { error: { type: "string" } } },
         },
       },
@@ -59,14 +148,14 @@ export async function authRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { email, code } = verifySchema.parse(req.body);
       try {
-        const { accessToken, refreshToken } = await verifyLoginOtp(email, code, req.headers["user-agent"]);
+        const { accessToken, refreshToken, needsPassword } = await verifyLoginOtp(email, code, req.headers["user-agent"]);
         reply.setCookie(REFRESH_COOKIE, refreshToken, {
           httpOnly: true,
           secure: true,
           sameSite: "none",
           path: "/auth",
         });
-        return reply.send({ accessToken });
+        return reply.send({ accessToken, needsPassword });
       } catch (err) {
         return reply.code(401).send({ error: (err as Error).message });
       }

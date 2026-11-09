@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { depositCreditedEmail } from "../../email/templates.js";
 import { applyLedgerMovement, TX_OPTIONS } from "../../ledger/ledger.service.js";
 import { mailer } from "../../modules/auth/mailer.js";
 
@@ -84,9 +85,6 @@ async function notifyDepositCredited(userId: string, assetId: string, amount: st
 
   const whole = new Prisma.Decimal(amount).div(new Prisma.Decimal(10).pow(asset.decimals));
 
-  await mailer.send(
-    user.email,
-    `Deposit received: ${whole.toString()} ${asset.symbol}`,
-    `We've credited ${whole.toString()} ${asset.symbol} to your MoonXch balance. It's available to use now.`,
-  );
+  const { subject, text, html } = depositCreditedEmail(whole.toString(), asset.symbol);
+  await mailer.send(user.email, subject, text, html);
 }

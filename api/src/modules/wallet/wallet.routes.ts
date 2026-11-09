@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth } from "../auth/require-auth.js";
 import { getBalance } from "../../ledger/ledger.service.js";
+import { getUsdPrices, getUsdToNgnRate } from "../trade/price-feed.service.js";
 import { issueAllAddressesForUser } from "./address.service.js";
 
 export async function walletRoutes(app: FastifyInstance) {
@@ -33,16 +35,26 @@ export async function walletRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const assets = await prisma.asset.findMany({ where: { isActive: true } });
-      const balances = await Promise.all(
-        assets.map(async (asset) => ({
+      const [rawBalances, prices, ngnRate] = await Promise.all([
+        Promise.all(assets.map((asset) => getBalance(req.userId!, asset.id))),
+        getUsdPrices(assets.map((a) => a.symbol)),
+        getUsdToNgnRate(),
+      ]);
+
+      const balances = assets.map((asset, i) => {
+        const balance = rawBalances[i];
+        const price = prices[asset.symbol];
+        const whole = new Prisma.Decimal(balance).div(new Prisma.Decimal(10).pow(asset.decimals));
+        return {
           id: asset.id,
           symbol: asset.symbol,
           chain: asset.chain,
           decimals: asset.decimals,
-          balance: (await getBalance(req.userId!, asset.id)).toString(),
-        })),
-      );
-      return reply.send({ balances });
+          balance: balance.toString(),
+          usdValue: price ? whole.mul(price).toFixed(2) : null,
+        };
+      });
+      return reply.send({ balances, ngnRate });
     },
   );
 }
