@@ -30,7 +30,7 @@ function layout(opts: { preheader: string; bodyHtml: string }): string {
                       <img src="${LOGO_URL}" width="28" height="28" alt="MoonXch" style="display:block; border-radius:6px;" />
                     </td>
                     <td style="vertical-align:middle;">
-                      <span style="font-size:14px; font-weight:700; letter-spacing:0.02em; color:${FOREGROUND};">MOONXCH</span>
+                      <span style="font-size:14px; font-weight:700; letter-spacing:0.02em; color:${FOREGROUND};">Moon<span style="color:${GOLD};">Xch</span></span>
                     </td>
                   </tr>
                 </table>

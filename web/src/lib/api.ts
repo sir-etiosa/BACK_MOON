@@ -138,4 +138,6 @@ export const api = {
       body: JSON.stringify({ assetId, amount, toAddress }),
     }),
   getWithdrawals: () => request<{ withdrawals: Withdrawal[] }>("/withdrawals"),
+  requestAsset: (tokenName: string, network: string) =>
+    request<{ ok: true }>("/asset-requests", { method: "POST", body: JSON.stringify({ tokenName, network }) }),
 };

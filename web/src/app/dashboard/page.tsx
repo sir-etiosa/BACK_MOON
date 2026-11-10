@@ -35,15 +35,15 @@ const ASSET_COLOR: Record<string, string> = {
 const QUICK_ACTIONS = [
   { href: "/deposit", label: "Deposit", icon: ArrowDownToLine },
   { href: "/swap", label: "Swap", icon: ArrowLeftRight },
-  { label: "Pay bills", icon: Receipt, comingSoon: true },
-  { label: "Trade & more", icon: MoreHorizontal, comingSoon: true },
+  { href: "/pay", label: "Pay bills", icon: Receipt },
+  { href: "/more", label: "Trade & more", icon: MoreHorizontal },
 ] as const;
 
 const FOOTER_NAV = [
   { href: "/dashboard", label: "Home", icon: Home },
   { label: "Cash out", icon: Banknote, comingSoon: true },
-  { label: "Pay", icon: Receipt, comingSoon: true },
-  { label: "More", icon: MoreHorizontal, comingSoon: true },
+  { href: "/pay", label: "Pay", icon: Receipt },
+  { href: "/more", label: "More", icon: MoreHorizontal },
 ] as const;
 
 const STATUS_LABEL: Record<Withdrawal["status"], { text: string; className: string }> = {
@@ -114,7 +114,9 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
-          <span className="text-sm font-bold tracking-tight">MOONXCH</span>
+          <span className="text-sm font-bold tracking-tight">
+            Moon<span className="text-primary">Xch</span>
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
@@ -177,68 +179,68 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-2.5">
-        {QUICK_ACTIONS.map((action) => {
-          const Icon = action.icon;
-          const className = buttonVariants({
-            variant: "secondary",
-            className: "h-auto flex-col gap-1.5 px-1 py-3 text-xs font-semibold",
-          });
-          if ("href" in action) {
-            return (
-              <Link key={action.label} href={action.href} className={className}>
-                <Icon className="size-5" />
-                {action.label}
-              </Link>
-            );
-          }
-          return (
-            <button key={action.label} type="button" onClick={() => notifyComingSoon(action.label)} className={className}>
-              <Icon className="size-5" />
-              {action.label}
-            </button>
-          );
-        })}
+        {QUICK_ACTIONS.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={label}
+            href={href}
+            className={buttonVariants({
+              variant: "secondary",
+              className: "h-auto flex-col gap-1.5 px-1 py-3 text-xs font-semibold",
+            })}
+          >
+            <Icon className="size-5" />
+            {label}
+          </Link>
+        ))}
       </div>
 
       <section className="flex flex-col gap-1">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="label-eyebrow">Recent activity</h2>
-          <Link href="/withdraw" className="text-primary text-xs font-medium">
+          <Link href="/activity" className="text-primary text-xs font-medium">
             See all
           </Link>
         </div>
-        {!withdrawals ? (
-          <div className="flex flex-col gap-px">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-        ) : withdrawals.length === 0 ? (
-          <p className="text-muted-foreground py-4 text-center text-sm">No activity yet.</p>
-        ) : (
-          withdrawals.map((w, i) => {
-            const asset = assetById.get(w.assetId);
-            const status = STATUS_LABEL[w.status];
-            return (
-              <div key={w.id} className={cn("flex items-center gap-3 py-3", i > 0 && "border-border border-t")}>
-                <div className="bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-                  <ArrowUpFromLine className="text-muted-foreground size-4" />
-                </div>
-                <div className="flex flex-1 items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">Withdraw {asset?.symbol ?? ""}</span>
-                    <span className="text-muted-foreground text-xs">{formatActivityDate(w.requestedAt)}</span>
+        <div className="bg-card border-border rounded-2xl border px-4">
+          {!withdrawals ? (
+            <div className="flex flex-col gap-px py-1">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : withdrawals.length === 0 ? (
+            <p className="text-muted-foreground py-6 text-center text-sm">No activity yet.</p>
+          ) : (
+            withdrawals.map((w, i) => {
+              const asset = assetById.get(w.assetId);
+              const status = STATUS_LABEL[w.status];
+              return (
+                <div
+                  key={w.id}
+                  className={cn(
+                    "hover:bg-accent -mx-4 flex items-center gap-3 px-4 py-3 transition-colors",
+                    i > 0 && "border-border border-t",
+                  )}
+                >
+                  <div className="bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+                    <ArrowUpFromLine className="text-muted-foreground size-4" />
                   </div>
-                  <div data-numeric className="flex flex-col items-end">
-                    <span className="font-mono text-sm">
-                      -{asset ? fromSmallestUnits(w.amount, asset.decimals) : w.amount}
-                    </span>
-                    <span className={cn("text-xs", status.className)}>{status.text}</span>
+                  <div className="flex flex-1 items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Withdraw {asset?.symbol ?? ""}</span>
+                      <span className="text-muted-foreground text-xs">{formatActivityDate(w.requestedAt)}</span>
+                    </div>
+                    <div data-numeric className="flex flex-col items-end">
+                      <span className="font-mono text-sm">
+                        -{asset ? fromSmallestUnits(w.amount, asset.decimals) : w.amount}
+                      </span>
+                      <span className={cn("text-xs", status.className)}>{status.text}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
       </section>
 
       <section className="flex flex-col gap-1">
@@ -249,35 +251,45 @@ export default function DashboardPage() {
             Withdraw
           </Link>
         </div>
-        {!balances ? (
-          <div className="flex flex-col gap-px">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-        ) : (
-          balances.map((b, i) => (
-            <div key={b.id} className={cn("flex items-center gap-3 py-3", i > 0 && "border-border border-t")}>
+        <div className="bg-card border-border rounded-2xl border px-4">
+          {!balances ? (
+            <div className="flex flex-col gap-px py-1">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : (
+            balances.map((b, i) => (
               <div
+                key={b.id}
                 className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold",
-                  ASSET_COLOR[b.symbol] ?? "bg-muted text-muted-foreground",
+                  "hover:bg-accent -mx-4 flex items-center gap-3 px-4 py-3 transition-colors",
+                  i > 0 && "border-border border-t",
                 )}
               >
-                {b.symbol.slice(0, 1)}
-              </div>
-              <div className="flex flex-1 items-center justify-between">
-                <span className="font-medium">{b.symbol}</span>
-                <div data-numeric className="flex flex-col items-end">
-                  <span className="font-mono text-sm">{fromSmallestUnits(b.balance, b.decimals)}</span>
-                  {b.usdValue && (
-                    <span className="text-muted-foreground font-mono text-xs">${Number(b.usdValue).toFixed(2)}</span>
+                <div
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold",
+                    ASSET_COLOR[b.symbol] ?? "bg-muted text-muted-foreground",
                   )}
+                >
+                  {b.symbol.slice(0, 1)}
+                </div>
+                <div className="flex flex-1 items-center justify-between">
+                  <span className="font-medium">{b.symbol}</span>
+                  <div data-numeric className="flex flex-col items-end">
+                    <span className="font-mono text-sm">{fromSmallestUnits(b.balance, b.decimals)}</span>
+                    {b.usdValue && (
+                      <span className="text-muted-foreground font-mono text-xs">
+                        ${Number(b.usdValue).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </section>
     </div>
 
@@ -300,7 +312,7 @@ export default function DashboardPage() {
               <Link
                 key={item.label}
                 href={item.href}
-                className="text-primary flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5"
+                className="text-primary hover:bg-accent flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors"
               >
                 {content}
               </Link>
@@ -311,7 +323,7 @@ export default function DashboardPage() {
               key={item.label}
               type="button"
               onClick={() => notifyComingSoon(item.label)}
-              className="text-muted-foreground flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5"
+              className="text-muted-foreground hover:bg-accent flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors"
             >
               {content}
             </button>

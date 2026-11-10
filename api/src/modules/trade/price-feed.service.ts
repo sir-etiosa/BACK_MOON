@@ -7,6 +7,7 @@ const COINGECKO_IDS: Record<string, string> = {
   SOL: "solana",
   XMR: "monero",
   USDT: "tether",
+  USDC: "usd-coin",
 };
 
 const CACHE_TTL_MS = 15_000;

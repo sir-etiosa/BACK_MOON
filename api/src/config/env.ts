@@ -15,6 +15,7 @@ const envSchema = z.object({
   ETHERSCAN_API_KEY: z.string().optional(),
   BLOCKCYPHER_TOKEN: z.string().optional(),
   CRON_SECRET: z.string().min(16),
+  ADMIN_EMAIL: z.string().email().optional(),
 });
 
 export const env = envSchema.parse(process.env);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
+import confetti from "canvas-confetti";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -65,6 +66,15 @@ const COPY: Record<Step, { title: string; subtitle: (email: string) => string }>
     subtitle: () => "You'll use this to sign in next time.",
   },
 };
+
+function fireConfetti() {
+  const colors = ["#ffd24a", "#9d5cff", "#ece6fa", "#4ed9a4"];
+  const defaults = { colors, zIndex: 1000 };
+  confetti({ ...defaults, particleCount: 90, spread: 100, startVelocity: 45, origin: { y: 0.55 } });
+  setTimeout(() => confetti({ ...defaults, particleCount: 60, angle: 60, spread: 60, origin: { x: 0, y: 0.6 } }), 150);
+  setTimeout(() => confetti({ ...defaults, particleCount: 60, angle: 120, spread: 60, origin: { x: 1, y: 0.6 } }), 150);
+  setTimeout(() => confetti({ ...defaults, particleCount: 50, spread: 120, startVelocity: 35, origin: { y: 0.4 } }), 350);
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -207,6 +217,7 @@ export default function LoginPage() {
       setLastEmail(email);
       clearExplicitLogout();
       setShowCongrats(true);
+      fireConfetti();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
@@ -237,7 +248,9 @@ export default function LoginPage() {
       <div className="flex w-full max-w-[340px] flex-col gap-10">
         <div className="flex items-center gap-2.5">
           <Image src="/logo.png" alt="" width={32} height={32} className="rounded-md" />
-          <span className="text-sm font-bold tracking-tight">MOONXCH</span>
+          <span className="text-sm font-bold tracking-tight">
+            Moon<span className="text-primary">Xch</span>
+          </span>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -279,14 +292,9 @@ export default function LoginPage() {
             <Button variant="secondary" disabled={loading} onClick={goToFreshEntry} className="h-11 font-semibold">
               Log in with another email
             </Button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={goToSignup}
-              className="text-muted-foreground hover:text-foreground py-1 text-sm transition-colors"
-            >
-              New to MoonXch? Sign up
-            </button>
+            <Button disabled={loading} onClick={goToSignup} className="h-11 font-semibold">
+              Sign up
+            </Button>
           </div>
         )}
 
@@ -305,22 +313,16 @@ export default function LoginPage() {
             <span className="label-eyebrow mt-1">Password</span>
             <Input
               type="password"
-              placeholder="Leave blank if you're new"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="h-11"
             />
             <Button type="submit" disabled={loading} className="mt-1 h-11 font-semibold">
-              {loading ? "Checking..." : "Continue"}
+              {loading ? "Checking..." : "Login"}
             </Button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={goToSignup}
-              className="text-muted-foreground hover:text-foreground py-1 text-sm transition-colors"
-            >
-              New to MoonXch? Sign up
-            </button>
+            <Button type="button" disabled={loading} onClick={goToSignup} className="h-11 font-semibold">
+              Sign up
+            </Button>
             {rememberedEmail && (
               <button
                 type="button"

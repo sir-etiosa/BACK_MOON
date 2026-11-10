@@ -6,26 +6,16 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { api, getToken, type Balance, type Withdrawal, ApiError } from "@/lib/api";
+import { api, getToken, type Balance, ApiError } from "@/lib/api";
 import { fromSmallestUnits, toSmallestUnits } from "@/lib/units";
-
-const STATUS_VARIANT: Record<Withdrawal["status"], "default" | "secondary" | "destructive" | "outline"> = {
-  PENDING: "secondary",
-  APPROVED: "secondary",
-  SENT: "default",
-  CONFIRMED: "default",
-  REJECTED: "destructive",
-};
 
 export default function WithdrawPage() {
   const router = useRouter();
   const [balances, setBalances] = useState<Balance[] | null>(null);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[] | null>(null);
   const [assetId, setAssetId] = useState("");
   const [amount, setAmount] = useState("");
   const [toAddress, setToAddress] = useState("");
@@ -34,10 +24,7 @@ export default function WithdrawPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   function refresh() {
-    return Promise.all([api.getBalances(), api.getWithdrawals()]).then(([b, w]) => {
-      setBalances(b.balances);
-      setWithdrawals(w.withdrawals);
-    });
+    return api.getBalances().then((b) => setBalances(b.balances));
   }
 
   useEffect(() => {
@@ -71,9 +58,13 @@ export default function WithdrawPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-8">
-      <Link href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-fit" })}>
-        &larr; Back
+    <div className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-4">
+      <Link
+        href="/dashboard"
+        aria-label="Back"
+        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+      >
+        <ArrowLeft className="size-4" />
       </Link>
 
       <Card>
@@ -141,37 +132,6 @@ export default function WithdrawPage() {
                 {loading ? "Requesting..." : "Request withdrawal"}
               </Button>
             </form>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">History</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {!withdrawals ? (
-            <p className="text-muted-foreground text-sm">Loading...</p>
-          ) : withdrawals.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No withdrawals yet.</p>
-          ) : (
-            withdrawals.map((w, i) => {
-              const a = balances?.find((b) => b.id === w.assetId);
-              return (
-                <div key={w.id}>
-                  <div className="flex items-center justify-between py-1">
-                    <div className="flex flex-col">
-                      <span className="font-medium">
-                        {a ? fromSmallestUnits(w.amount, a.decimals) : w.amount} {a?.symbol ?? ""}
-                      </span>
-                      <span className="text-muted-foreground text-xs break-all">{w.toAddress}</span>
-                    </div>
-                    <Badge variant={STATUS_VARIANT[w.status]}>{w.status}</Badge>
-                  </div>
-                  {i < withdrawals.length - 1 && <Separator />}
-                </div>
-              );
-            })
           )}
         </CardContent>
       </Card>

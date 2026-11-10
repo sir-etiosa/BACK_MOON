@@ -8,6 +8,12 @@ const assets = [
   { symbol: "SOL", chain: "solana", decimals: 9 },
   { symbol: "XMR", chain: "monero", decimals: 12 },
   { symbol: "USDT", chain: "tron", decimals: 6, contractAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" },
+  { symbol: "USDC", chain: "evm", decimals: 6, contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+  // Base shares the same EVM address as mainnet (same xpub, same derivation) — these two rows
+  // exist purely so the watcher and frontend can track/credit deposits on Base as distinct
+  // assets, not because Base needs its own address derivation or chain_config.
+  { symbol: "ETH", chain: "base", decimals: 18 },
+  { symbol: "USDC", chain: "base", decimals: 6, contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
 ];
 
 const chainConfigs = [

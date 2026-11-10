@@ -6,7 +6,8 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, getToken, type Balance, ApiError } from "@/lib/api";
@@ -57,9 +58,13 @@ export default function SwapPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-8">
-      <Link href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm", className: "w-fit" })}>
-        &larr; Back
+    <div className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-4">
+      <Link
+        href="/dashboard"
+        aria-label="Back"
+        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+      >
+        <ArrowLeft className="size-4" />
       </Link>
 
       <Card>
