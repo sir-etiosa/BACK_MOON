@@ -44,6 +44,16 @@ enum LedgerRefType {
   ADJUSTMENT
 }
 
+enum SupportTicketStatus {
+  OPEN
+  CLOSED
+}
+
+enum SupportSender {
+  USER
+  ADMIN
+}
+
 model User {
   id                     String    @id @default(uuid())
   email                  String    @unique
@@ -65,6 +75,7 @@ model User {
   tradesAsA       Trade[]   @relation("TradeUserA")
   tradesAsB       Trade[]   @relation("TradeUserB")
   assetRequests   AssetRequest[]
+  supportTickets  SupportTicket[]
 
   @@map("users")
 }
@@ -270,4 +281,31 @@ model AssetRequest {
 
   @@index([userId, createdAt])
   @@map("asset_requests")
+}
+
+model SupportTicket {
+  id        String                 @id @default(uuid())
+  userId    String                 @map("user_id")
+  user      User                   @relation(fields: [userId], references: [id])
+  status    SupportTicketStatus    @default(OPEN)
+  clearedAt DateTime?              @map("cleared_at")
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+  messages  SupportTicketMessage[]
+
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id        String        @id @default(uuid())
+  ticketId  String        @map("ticket_id")
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  sender    SupportSender
+  body      String
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
 }

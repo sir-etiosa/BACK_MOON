@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken } from "@/lib/api";
+import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
 
 const CATEGORIES = [
@@ -29,6 +31,7 @@ const CATEGORIES = [
 
 export default function PayBillsPage() {
   const router = useRouter();
+  const { show, hide } = useLoading();
   const [category, setCategory] = useState("electricity");
   const [meterNumber, setMeterNumber] = useState("");
   const [amount, setAmount] = useState("10000");
@@ -39,11 +42,13 @@ export default function PayBillsPage() {
       router.push("/login");
       return;
     }
+    show();
     api
       .getBalances()
       .then((r) => setNgnRate(r.ngnRate))
-      .catch(() => router.push("/login"));
-  }, [router]);
+      .catch(() => router.push("/login"))
+      .finally(hide);
+  }, [router, show, hide]);
 
   function notifyComingSoon() {
     toast.info("Pay bills is coming soon");
@@ -52,14 +57,17 @@ export default function PayBillsPage() {
   const usdtEquivalent = amount && ngnRate ? Number(amount) / ngnRate : null;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
-      <Link
-        href="/dashboard"
-        aria-label="Back"
-        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
-      >
-        <ArrowLeft className="size-4" />
-      </Link>
+    <div className="mx-auto flex w-full min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard"
+          aria-label="Back"
+          className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight">Pay bills.</h1>

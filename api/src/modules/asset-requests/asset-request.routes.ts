@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/require-auth.js";
-import { requestAsset } from "./asset-request.service.js";
+import { requireAdmin } from "../admin/require-admin.js";
+import { requestAsset, getAllAssetRequests } from "./asset-request.service.js";
 
 const requestSchema = z.object({
   tokenName: z.string().trim().min(1).max(100),
@@ -39,6 +40,22 @@ export async function assetRequestRoutes(app: FastifyInstance) {
       } catch (err) {
         return reply.code(429).send({ error: (err as Error).message });
       }
+    },
+  );
+
+  app.get(
+    "/admin/asset-requests",
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ["admin"],
+        summary: "List all user token/network requests",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async () => {
+      const requests = await getAllAssetRequests();
+      return { requests };
     },
   );
 }

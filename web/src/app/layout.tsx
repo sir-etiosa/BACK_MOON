@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { LoadingProvider } from "@/components/loading-overlay";
+import { BalanceVisibilityProvider } from "@/components/balance-visibility";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          <LoadingProvider>{children}</LoadingProvider>
+          <BalanceVisibilityProvider>
+            <LoadingProvider>{children}</LoadingProvider>
+          </BalanceVisibilityProvider>
           <Toaster />
         </ThemeProvider>
       </body>

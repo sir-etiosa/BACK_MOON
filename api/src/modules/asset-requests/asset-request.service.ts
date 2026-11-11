@@ -35,3 +35,10 @@ export async function requestAsset(userId: string, tokenName: string, network: s
 
   return request;
 }
+
+export function getAllAssetRequests() {
+  return prisma.assetRequest.findMany({
+    include: { user: { select: { email: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+}

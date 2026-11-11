@@ -10,6 +10,7 @@ import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { withdrawalRoutes } from "./modules/withdrawals/withdrawal.routes.js";
 import { cronRoutes } from "./modules/cron/cron.routes.js";
 import { assetRequestRoutes } from "./modules/asset-requests/asset-request.routes.js";
+import { supportRoutes } from "./modules/support/support.routes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -61,6 +62,7 @@ export async function buildApp() {
   await app.register(withdrawalRoutes);
   await app.register(cronRoutes);
   await app.register(assetRequestRoutes);
+  await app.register(supportRoutes);
 
   return app;
 }

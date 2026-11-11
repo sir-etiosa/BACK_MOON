@@ -17,7 +17,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, ApiError } from "@/lib/api";
+import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
 
 interface AddressRow {
@@ -50,6 +52,7 @@ const ASSETS = [
 
 export default function DepositPage() {
   const router = useRouter();
+  const { show, hide } = useLoading();
   const [addresses, setAddresses] = useState<AddressRow[] | null>(null);
   const [assetIndex, setAssetIndex] = useState(0);
   const [networkIndex, setNetworkIndex] = useState(0);
@@ -67,11 +70,13 @@ export default function DepositPage() {
       router.push("/login");
       return;
     }
+    show();
     api
       .getAddresses()
       .then((r) => setAddresses(r.addresses))
-      .catch(() => router.push("/login"));
-  }, [router]);
+      .catch(() => router.push("/login"))
+      .finally(hide);
+  }, [router, show, hide]);
 
   function selectAsset(index: number) {
     setAssetIndex(index);
@@ -121,7 +126,7 @@ export default function DepositPage() {
   const selectedAddress = addressByChain.get(network.addressChain);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
+    <div className="mx-auto flex w-full min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
       <div className="relative flex items-center justify-center">
         <Link
           href="/dashboard"
@@ -131,6 +136,9 @@ export default function DepositPage() {
           <ArrowLeft className="size-4" />
         </Link>
         <h1 className="text-lg font-bold tracking-tight">Deposit</h1>
+        <div className="absolute right-0">
+          <ThemeToggle />
+        </div>
       </div>
 
       {!addresses ? (

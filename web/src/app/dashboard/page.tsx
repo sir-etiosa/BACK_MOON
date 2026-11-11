@@ -11,14 +11,17 @@ import {
   ArrowUpFromLine,
   ArrowUpRight,
   Banknote,
-  Bell,
+  Eye,
+  EyeOff,
   Home,
   MoreHorizontal,
   Receipt,
+  Settings,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useBalanceVisibility } from "@/components/balance-visibility";
 import { api, getToken, clearToken, markExplicitLogout, type Balance, type Withdrawal } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -69,6 +72,7 @@ function formatActivityDate(iso: string): string {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { hidden: balancesHidden, toggle: toggleBalancesHidden } = useBalanceVisibility();
   const [balances, setBalances] = useState<Balance[] | null>(null);
   const [ngnRate, setNgnRate] = useState<number | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[] | null>(null);
@@ -110,7 +114,7 @@ export default function DashboardPage() {
 
   return (
     <>
-    <div className="mx-auto flex min-h-screen max-w-md flex-col gap-7 px-5 pt-6 pb-24">
+    <div className="mx-auto flex w-full min-h-screen max-w-md flex-col gap-7 px-5 pt-6 pb-24">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
@@ -120,24 +124,38 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Button variant="ghost" size="icon-sm" aria-label="Notifications" onClick={() => notifyComingSoon("Notifications")}>
-            <Bell className="size-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <Button variant="destructive" size="xs" onClick={handleLogout}>
             Log out
           </Button>
         </div>
       </div>
 
       <section className="flex flex-col gap-1">
-        <span className="label-eyebrow">Total balance</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="label-eyebrow">Total balance</span>
+            <button
+              type="button"
+              onClick={toggleBalancesHidden}
+              aria-label={balancesHidden ? "Show balances" : "Hide balances"}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {balancesHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            </button>
+          </div>
+          <Link href="/settings" aria-label="Settings" className={buttonVariants({ variant: "ghost", size: "icon-sm" })}>
+            <Settings className="size-4" />
+          </Link>
+        </div>
         {totalUsd === null ? (
           <Skeleton className="h-10 w-40" />
+        ) : balancesHidden ? (
+          <div className="font-mono text-4xl font-bold tracking-tight">***</div>
         ) : (
           <>
             <div data-numeric className="flex items-baseline font-mono text-4xl font-bold tracking-tight">
               <span>${formatUsd(totalUsd).whole}</span>
-              <span className="text-muted-foreground text-2xl">.{formatUsd(totalUsd).cents}</span>
+              <span>.{formatUsd(totalUsd).cents}</span>
             </div>
             {totalNgn !== null && (
               <span data-numeric className="text-muted-foreground font-mono text-sm">
@@ -156,7 +174,7 @@ export default function DashboardPage() {
               className="bg-card border-border flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium"
             >
               <span className={cn("size-1.5 rounded-full", ASSET_COLOR[b.symbol]?.split(" ")[0] ?? "bg-muted-foreground")} />
-              {b.symbol} {fromSmallestUnits(b.balance, b.decimals)}
+              {b.symbol} {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}
             </div>
           ))}
         </div>
@@ -278,10 +296,12 @@ export default function DashboardPage() {
                 <div className="flex flex-1 items-center justify-between">
                   <span className="font-medium">{b.symbol}</span>
                   <div data-numeric className="flex flex-col items-end">
-                    <span className="font-mono text-sm">{fromSmallestUnits(b.balance, b.decimals)}</span>
+                    <span className="font-mono text-sm">
+                      {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}
+                    </span>
                     {b.usdValue && (
                       <span className="text-muted-foreground font-mono text-xs">
-                        ${Number(b.usdValue).toFixed(2)}
+                        {balancesHidden ? "***" : `$${Number(b.usdValue).toFixed(2)}`}
                       </span>
                     )}
                   </div>

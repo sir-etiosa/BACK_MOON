@@ -4,6 +4,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeft, CalendarClock, Lock, LineChart, TrendingUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const SECTIONS = [
   {
@@ -42,14 +43,17 @@ export default function MorePage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
-      <Link
-        href="/dashboard"
-        aria-label="Back"
-        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
-      >
-        <ArrowLeft className="size-4" />
-      </Link>
+    <div className="mx-auto flex w-full min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard"
+          aria-label="Back"
+          className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight">Grow your money.</h1>

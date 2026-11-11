@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowUpFromLine } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, type Withdrawal } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
+import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<Withdrawal["status"], { text: string; className: string }> = {
@@ -27,6 +29,7 @@ function formatActivityDate(iso: string): string {
 
 export default function ActivityPage() {
   const router = useRouter();
+  const { show, hide } = useLoading();
   const [balances, setBalances] = useState<Balance[] | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[] | null>(null);
 
@@ -35,25 +38,30 @@ export default function ActivityPage() {
       router.push("/login");
       return;
     }
+    show();
     Promise.all([api.getBalances(), api.getWithdrawals()])
       .then(([b, w]) => {
         setBalances(b.balances);
         setWithdrawals(w.withdrawals);
       })
-      .catch(() => router.push("/login"));
-  }, [router]);
+      .catch(() => router.push("/login"))
+      .finally(hide);
+  }, [router, show, hide]);
 
   const assetById = new Map((balances ?? []).map((b) => [b.id, b]));
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
-      <Link
-        href="/dashboard"
-        aria-label="Back"
-        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
-      >
-        <ArrowLeft className="size-4" />
-      </Link>
+    <div className="mx-auto flex w-full min-h-screen max-w-sm flex-col gap-6 px-5 pt-4 pb-16">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard"
+          aria-label="Back"
+          className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight">Activity</h1>

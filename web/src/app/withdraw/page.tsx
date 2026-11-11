@@ -10,11 +10,14 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, ApiError } from "@/lib/api";
 import { fromSmallestUnits, toSmallestUnits } from "@/lib/units";
+import { useLoading } from "@/components/loading-overlay";
 
 export default function WithdrawPage() {
   const router = useRouter();
+  const { show, hide } = useLoading();
   const [balances, setBalances] = useState<Balance[] | null>(null);
   const [assetId, setAssetId] = useState("");
   const [amount, setAmount] = useState("");
@@ -32,8 +35,11 @@ export default function WithdrawPage() {
       router.push("/login");
       return;
     }
-    refresh().catch(() => router.push("/login"));
-  }, [router]);
+    show();
+    refresh()
+      .catch(() => router.push("/login"))
+      .finally(hide);
+  }, [router, show, hide]);
 
   const asset = balances?.find((b) => b.id === assetId);
 
@@ -58,14 +64,17 @@ export default function WithdrawPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-4">
-      <Link
-        href="/dashboard"
-        aria-label="Back"
-        className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
-      >
-        <ArrowLeft className="size-4" />
-      </Link>
+    <div className="mx-auto flex w-full max-w-sm flex-col gap-4 p-4 pt-4">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard"
+          aria-label="Back"
+          className="bg-primary text-primary-foreground -ml-1.5 flex h-9 w-9 items-center justify-center rounded-full"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <Card>
         <CardHeader>

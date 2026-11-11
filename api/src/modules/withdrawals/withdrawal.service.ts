@@ -49,9 +49,9 @@ export async function listWithdrawalsForUser(userId: string) {
 
 export async function listPendingWithdrawals() {
   return prisma.withdrawal.findMany({
-    where: { status: { in: ["PENDING", "APPROVED"] } },
+    where: { status: { in: ["PENDING", "APPROVED", "SENT"] } },
     orderBy: { requestedAt: "asc" },
-    include: { user: { select: { email: true } }, asset: { select: { symbol: true, chain: true } } },
+    include: { user: { select: { email: true } }, asset: { select: { symbol: true, chain: true, decimals: true } } },
   });
 }
 

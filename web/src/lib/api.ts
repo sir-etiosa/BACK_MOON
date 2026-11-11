@@ -94,6 +94,21 @@ export interface Balance {
   usdValue: string | null;
 }
 
+export interface SupportTicketMessage {
+  id: string;
+  sender: "USER" | "ADMIN";
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  status: "OPEN" | "CLOSED";
+  createdAt: string;
+  updatedAt: string;
+  messages: SupportTicketMessage[];
+}
+
 export interface Withdrawal {
   id: string;
   assetId: string;
@@ -140,4 +155,13 @@ export const api = {
   getWithdrawals: () => request<{ withdrawals: Withdrawal[] }>("/withdrawals"),
   requestAsset: (tokenName: string, network: string) =>
     request<{ ok: true }>("/asset-requests", { method: "POST", body: JSON.stringify({ tokenName, network }) }),
+  sendSupportMessage: (message: string) =>
+    request<{ ok: true }>("/support-messages", { method: "POST", body: JSON.stringify({ message }) }),
+  getSupportMessages: () => request<{ tickets: SupportTicket[] }>("/support-messages"),
+  getSupportTicket: (id: string) => request<{ ticket: SupportTicket }>(`/support-messages/${id}`),
+  replySupportTicket: (id: string, message: string) =>
+    request<{ message: SupportTicketMessage }>(`/support-messages/${id}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
 };
