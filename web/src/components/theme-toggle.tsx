@@ -10,14 +10,14 @@ export function ThemeToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       aria-label="Toggle theme"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
     >
       {/* resolvedTheme is only known client-side — suppress the one-frame SSR/client
           mismatch on this icon rather than add a mounted-state dance that itself
           trips the set-state-in-effect lint rule. */}
-      <span suppressHydrationWarning>{resolvedTheme === "dark" ? <Sun /> : <Moon />}</span>
+      <span suppressHydrationWarning>{resolvedTheme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</span>
     </Button>
   );
 }

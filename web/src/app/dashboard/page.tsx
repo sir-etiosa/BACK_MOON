@@ -114,7 +114,7 @@ export default function DashboardPage() {
     <div className="mx-auto flex w-full min-h-screen max-w-md flex-col gap-7 px-5 pt-6 pb-24">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <Image src="/logo.png" alt="" width={28} height={28} className="rounded-md" />
+          <Image src="/logo.png" alt="" width={42} height={42} className="rounded-md" />
           <span className="text-sm font-bold tracking-tight">
             Moon<span className="text-primary">Xch</span>
           </span>
@@ -164,7 +164,7 @@ export default function DashboardPage() {
       </section>
 
       {nonZeroBalances.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="-mt-4 flex flex-wrap gap-2">
           {nonZeroBalances.map((b) => (
             <div
               key={b.id}
@@ -177,7 +177,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="bg-card border-border flex flex-col gap-3 rounded-2xl border p-[18px]">
+      <div className="bg-card border-border -mt-4 flex flex-col gap-3 rounded-2xl border p-[18px]">
         <div className="flex flex-col gap-0.5">
           <h2 className="font-semibold">Cash out to your bank</h2>
         </div>
