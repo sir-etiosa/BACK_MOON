@@ -88,6 +88,16 @@ export function loginOtpEmail(code: string): { subject: string; text: string; ht
   return { subject, text, html: layout({ preheader: `Your MoonXch login code is ${code}`, bodyHtml }) };
 }
 
+export function cashoutOtpEmail(code: string): { subject: string; text: string; html: string } {
+  const subject = "Verify your email to set up cash-out";
+  const text = `Your cash-out verification code is ${code}. It expires in 5 minutes.`;
+  const bodyHtml = `
+    <h1 style="margin:0 0 6px; font-size:20px; font-weight:700; color:${FOREGROUND};">Verify your email.</h1>
+    <p style="margin:0 0 4px; font-size:14px; line-height:1.6; color:${MUTED};">Use this code to confirm it's you before adding a bank account for cash-outs.</p>
+    ${otpBlock(code)}`;
+  return { subject, text, html: layout({ preheader: `Your MoonXch cash-out verification code is ${code}`, bodyHtml }) };
+}
+
 export function depositCreditedEmail(amount: string, symbol: string): { subject: string; text: string; html: string } {
   const subject = `Deposit received: ${amount} ${symbol}`;
   const text = `We've credited ${amount} ${symbol} to your MoonXch balance. It's available to use now.`;

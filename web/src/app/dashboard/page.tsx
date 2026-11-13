@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { toast } from "sonner";
 import {
   ArrowDownToLine,
   ArrowLeftRight,
@@ -44,7 +43,7 @@ const QUICK_ACTIONS = [
 
 const FOOTER_NAV = [
   { href: "/dashboard", label: "Home", icon: Home },
-  { label: "Cash out", icon: Banknote, comingSoon: true },
+  { href: "/cashout", label: "Cash out", icon: Banknote },
   { href: "/pay", label: "Pay", icon: Receipt },
   { href: "/more", label: "More", icon: MoreHorizontal },
 ] as const;
@@ -101,10 +100,6 @@ export default function DashboardPage() {
       markExplicitLogout();
       router.push("/login");
     });
-  }
-
-  function notifyComingSoon(feature: string) {
-    toast.info(`${feature} is coming soon`);
   }
 
   const totalUsd = balances?.reduce((sum, b) => sum + (b.usdValue ? Number(b.usdValue) : 0), 0) ?? null;
@@ -183,17 +178,17 @@ export default function DashboardPage() {
       <div className="bg-card border-border flex flex-col gap-3 rounded-2xl border p-[18px]">
         <div className="flex flex-col gap-0.5">
           <h2 className="font-semibold">Cash out to your bank</h2>
-          <p className="text-muted-foreground text-sm">Crypto & stables to naira — launching soon.</p>
+          <p className="text-muted-foreground text-sm">Crypto & stables to naira.</p>
         </div>
         {ngnRate !== null && (
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
             <span className="bg-primary size-1.5 rounded-full" />1 USDT ≈ ₦{ngnRate.toLocaleString("en-US", { maximumFractionDigits: 0 })} · Live rate
           </div>
         )}
-        <Button className="h-11 justify-between font-semibold" onClick={() => notifyComingSoon("Cash-out")}>
+        <Link href="/cashout" className={buttonVariants({ className: "h-11 justify-between font-semibold" })}>
           Cash out now
           <ArrowUpRight className="size-4" />
-        </Button>
+        </Link>
       </div>
 
       <div className="grid grid-cols-4 gap-2.5">
@@ -321,32 +316,15 @@ export default function DashboardPage() {
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2 pt-2">
         {FOOTER_NAV.map((item) => {
           const Icon = item.icon;
-          const content = (
-            <>
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="text-primary hover:bg-accent flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors"
+            >
               <Icon className="size-5" />
               <span className="text-[11px] font-semibold">{item.label}</span>
-            </>
-          );
-          if ("href" in item) {
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="text-primary hover:bg-accent flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors"
-              >
-                {content}
-              </Link>
-            );
-          }
-          return (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => notifyComingSoon(item.label)}
-              className="text-muted-foreground hover:bg-accent flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors"
-            >
-              {content}
-            </button>
+            </Link>
           );
         })}
       </div>

@@ -109,6 +109,16 @@ export interface SupportTicket {
   messages: SupportTicketMessage[];
 }
 
+export interface CashoutProfileStatus {
+  step: "name" | "otp" | "bank" | "done";
+  email: string;
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+  bankName: string | null;
+  accountNumber: string | null;
+}
+
 export interface Withdrawal {
   id: string;
   assetId: string;
@@ -164,4 +174,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+  getCashoutProfile: () => request<CashoutProfileStatus>("/cashout/profile"),
+  submitCashoutName: (firstName: string, middleName: string | undefined, lastName: string) =>
+    request<{ ok: true }>("/cashout/profile/name", {
+      method: "POST",
+      body: JSON.stringify({ firstName, middleName, lastName }),
+    }),
+  resendCashoutOtp: () => request<{ ok: true }>("/cashout/otp/resend", { method: "POST" }),
+  verifyCashoutOtp: (code: string) =>
+    request<{ ok: true }>("/cashout/otp/verify", { method: "POST", body: JSON.stringify({ code }) }),
+  saveCashoutBank: (bankName: string, accountNumber: string) =>
+    request<{ ok: true }>("/cashout/bank", { method: "POST", body: JSON.stringify({ bankName, accountNumber }) }),
 };
