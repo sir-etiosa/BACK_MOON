@@ -8,7 +8,7 @@ import { getNgnRate } from "../admin/settings.service.js";
 import { issueAllAddressesForUser } from "./address.service.js";
 
 // Fixed display order across every balance list in the app — unlisted symbols sort last.
-const ASSET_DISPLAY_ORDER = ["BTC", "ETH", "USDT", "USDC", "SOL", "XMR", "LTC"];
+const ASSET_DISPLAY_ORDER = ["NGN", "BTC", "ETH", "USDT", "USDC", "SOL", "XMR", "LTC"];
 
 export async function walletRoutes(app: FastifyInstance) {
   app.get(
@@ -63,6 +63,25 @@ export async function walletRoutes(app: FastifyInstance) {
         };
       });
       return reply.send({ balances, ngnRate });
+    },
+  );
+
+  app.get(
+    "/wallet/deposits",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["wallet"],
+        summary: "This user's deposit history",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (req, reply) => {
+      const deposits = await prisma.deposit.findMany({
+        where: { userId: req.userId! },
+        orderBy: { detectedAt: "desc" },
+      });
+      return reply.send({ deposits });
     },
   );
 }

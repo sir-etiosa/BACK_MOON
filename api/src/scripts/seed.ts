@@ -14,6 +14,9 @@ const assets = [
   // assets, not because Base needs its own address derivation or chain_config.
   { symbol: "ETH", chain: "base", decimals: 18 },
   { symbol: "USDC", chain: "base", decimals: 6, contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+  // Fiat ledger balance — no chain/address, only ever credited by a real NGN deposit
+  // (bank transfer/card funding), not by swapping from or converting any crypto asset.
+  { symbol: "NGN", chain: "fiat", decimals: 2 },
 ];
 
 const chainConfigs = [

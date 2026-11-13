@@ -21,6 +21,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, ApiError } from "@/lib/api";
 import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
+import { ASSET_NETWORKS } from "@/lib/asset-networks";
 
 interface AddressRow {
   chain: string;
@@ -29,25 +30,11 @@ interface AddressRow {
 }
 
 const ASSETS = [
-  { symbol: "USDT", dot: "bg-[#4ed9a4]", networks: [{ label: "Tron (TRC20)", addressChain: "tron" }] },
-  {
-    symbol: "USDC",
-    dot: "bg-[#4ed9a4]",
-    networks: [
-      { label: "Ethereum (ERC20)", addressChain: "evm" },
-      { label: "Base", addressChain: "evm" },
-    ],
-  },
-  {
-    symbol: "ETH",
-    dot: "bg-[#9d5cff]",
-    networks: [
-      { label: "Ethereum", addressChain: "evm" },
-      { label: "Base", addressChain: "evm" },
-    ],
-  },
-  { symbol: "BTC", dot: "bg-[#ffd24a]", networks: [{ label: "Bitcoin", addressChain: "bitcoin" }] },
-  { symbol: "LTC", dot: "bg-[#a69cc4]", networks: [{ label: "Litecoin", addressChain: "litecoin" }] },
+  { symbol: "USDT", dot: "bg-[#4ed9a4]", networks: ASSET_NETWORKS.USDT },
+  { symbol: "USDC", dot: "bg-[#4ed9a4]", networks: ASSET_NETWORKS.USDC },
+  { symbol: "ETH", dot: "bg-[#9d5cff]", networks: ASSET_NETWORKS.ETH },
+  { symbol: "BTC", dot: "bg-[#ffd24a]", networks: ASSET_NETWORKS.BTC },
+  { symbol: "LTC", dot: "bg-[#a69cc4]", networks: ASSET_NETWORKS.LTC },
 ] as const;
 
 export default function DepositPage() {

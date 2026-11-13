@@ -13,12 +13,13 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, ApiError } from "@/lib/api";
 import { fromSmallestUnits, toSmallestUnits } from "@/lib/units";
 import { useLoading } from "@/components/loading-overlay";
+import { networkLabel } from "@/lib/asset-networks";
 
 export default function SwapPage() {
   const router = useRouter();
   const { show, hide } = useLoading();
   const [balances, setBalances] = useState<Balance[] | null>(null);
-  const [fromId, setFromId] = useState<string>("");
+  const [fromSymbol, setFromSymbol] = useState<string>("");
   const [toId, setToId] = useState<string>("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,19 +39,36 @@ export default function SwapPage() {
       .finally(hide);
   }, [router, show, hide]);
 
-  const fromAsset = balances?.find((b) => b.id === fromId);
+  // "From" is combined across chains — one symbol, one spendable total. "To" stays per-chain
+  // since that's choosing exactly where the new funds land.
+  const fromGroups = (() => {
+    const map = new Map<string, { symbol: string; decimals: number; balance: string }>();
+    for (const b of balances ?? []) {
+      const existing = map.get(b.symbol);
+      if (!existing) map.set(b.symbol, { symbol: b.symbol, decimals: b.decimals, balance: b.balance });
+      else existing.balance = (BigInt(existing.balance) + BigInt(b.balance)).toString();
+    }
+    return [...map.values()];
+  })();
+  const fromGroup = fromGroups.find((g) => g.symbol === fromSymbol);
   const toAsset = balances?.find((b) => b.id === toId);
+
+  const symbolCounts = new Map<string, number>();
+  for (const b of balances ?? []) symbolCounts.set(b.symbol, (symbolCounts.get(b.symbol) ?? 0) + 1);
+  function displayLabel(b: Balance): string {
+    return (symbolCounts.get(b.symbol) ?? 0) > 1 ? `${b.symbol} · ${networkLabel(b.symbol, b.chain)}` : b.symbol;
+  }
 
   async function handleSwap(e: React.FormEvent) {
     e.preventDefault();
-    if (!fromAsset || !toAsset) return;
+    if (!fromGroup || !toAsset) return;
     setError(null);
     setSuccess(null);
     setLoading(true);
     try {
-      const smallest = toSmallestUnits(amount, fromAsset.decimals);
-      const { amountTo } = await api.swap(fromId, smallest, toId);
-      setSuccess(`Swapped ${amount} ${fromAsset.symbol} for ${fromSmallestUnits(amountTo, toAsset.decimals)} ${toAsset.symbol}`);
+      const smallest = toSmallestUnits(amount, fromGroup.decimals);
+      const { amountTo } = await api.swap(fromSymbol, smallest, toId);
+      setSuccess(`Swapped ${amount} ${fromGroup.symbol} for ${fromSmallestUnits(amountTo, toAsset.decimals)} ${toAsset.symbol}`);
       setAmount("");
       const refreshed = await api.getBalances();
       setBalances(refreshed.balances);
@@ -97,16 +115,16 @@ export default function SwapPage() {
           <form onSubmit={handleSwap} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <Label>From</Label>
-              <Select value={fromId} onValueChange={(v) => setFromId(v ?? "")}>
+              <Select value={fromSymbol} onValueChange={(v) => setFromSymbol(v ?? "")}>
                 <SelectTrigger className="h-11 w-full">
                   <SelectValue placeholder="Select asset">
-                    {(value: string | null) => balances.find((b) => b.id === value)?.symbol ?? "Select asset"}
+                    {(value: string | null) => fromGroups.find((g) => g.symbol === value)?.symbol ?? "Select asset"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {balances.map((b) => (
-                    <SelectItem key={b.id} value={b.id} disabled={b.id === toId}>
-                      {b.symbol} ({fromSmallestUnits(b.balance, b.decimals)} available)
+                  {fromGroups.map((g) => (
+                    <SelectItem key={g.symbol} value={g.symbol}>
+                      {g.symbol} ({fromSmallestUnits(g.balance, g.decimals)} available)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -118,13 +136,16 @@ export default function SwapPage() {
               <Select value={toId} onValueChange={(v) => setToId(v ?? "")}>
                 <SelectTrigger className="h-11 w-full">
                   <SelectValue placeholder="Select asset">
-                    {(value: string | null) => balances.find((b) => b.id === value)?.symbol ?? "Select asset"}
+                    {(value: string | null) => {
+                      const b = balances.find((b) => b.id === value);
+                      return b ? displayLabel(b) : "Select asset";
+                    }}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {balances.map((b) => (
-                    <SelectItem key={b.id} value={b.id} disabled={b.id === fromId}>
-                      {b.symbol}
+                    <SelectItem key={b.id} value={b.id} disabled={b.symbol === fromSymbol}>
+                      {displayLabel(b)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -132,7 +153,7 @@ export default function SwapPage() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="amount">Amount ({fromAsset?.symbol ?? "—"})</Label>
+              <Label htmlFor="amount">Amount ({fromGroup?.symbol ?? "—"})</Label>
               <Input
                 id="amount"
                 inputMode="decimal"
@@ -144,7 +165,7 @@ export default function SwapPage() {
               />
             </div>
 
-            <Button type="submit" disabled={loading || !fromId || !toId || !amount} className="h-11 font-semibold">
+            <Button type="submit" disabled={loading || !fromSymbol || !toId || !amount} className="h-11 font-semibold">
               {loading ? "Swapping..." : "Swap"}
             </Button>
           </form>

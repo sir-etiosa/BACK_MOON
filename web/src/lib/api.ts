@@ -129,6 +129,18 @@ export interface Withdrawal {
   requestedAt: string;
 }
 
+export interface Deposit {
+  id: string;
+  assetId: string;
+  address: string;
+  txHash: string;
+  amount: string;
+  confirmations: number;
+  status: "PENDING" | "CONFIRMED" | "CREDITED";
+  detectedAt: string;
+  creditedAt: string | null;
+}
+
 export interface CashoutBankAccount {
   id: string;
   bankName: string;
@@ -179,10 +191,11 @@ export const api = {
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
   getAddresses: () => request<{ addresses: { chain: string; address: string | null; error: string | null }[] }>("/wallet/addresses"),
   getBalances: () => request<{ balances: Balance[]; ngnRate: number | null }>("/wallet/balances"),
-  swap: (assetFromId: string, amountFrom: string, assetToId: string) =>
+  getDeposits: () => request<{ deposits: Deposit[] }>("/wallet/deposits"),
+  swap: (fromSymbol: string, amountFrom: string, assetToId: string) =>
     request<{ trade: unknown; amountTo: string }>("/trade/swap", {
       method: "POST",
-      body: JSON.stringify({ assetFromId, amountFrom, assetToId }),
+      body: JSON.stringify({ fromSymbol, amountFrom, assetToId }),
     }),
   requestWithdrawal: (assetId: string, amount: string, toAddress: string) =>
     request<{ withdrawal: Withdrawal }>("/withdrawals", {

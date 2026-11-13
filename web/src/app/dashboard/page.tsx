@@ -109,6 +109,21 @@ export default function DashboardPage() {
   const nonZeroBalances = balances?.filter((b) => b.balance !== "0") ?? [];
   const assetById = new Map((balances ?? []).map((b) => [b.id, b]));
 
+  // One row per symbol even when it spans multiple chains (e.g. ETH on Ethereum + Base).
+  const groupedBalances = (() => {
+    const map = new Map<string, { symbol: string; decimals: number; balance: string; usdValue: number | null }>();
+    for (const b of balances ?? []) {
+      const existing = map.get(b.symbol);
+      if (!existing) {
+        map.set(b.symbol, { symbol: b.symbol, decimals: b.decimals, balance: b.balance, usdValue: b.usdValue ? Number(b.usdValue) : null });
+      } else {
+        existing.balance = (BigInt(existing.balance) + BigInt(b.balance)).toString();
+        if (b.usdValue) existing.usdValue = (existing.usdValue ?? 0) + Number(b.usdValue);
+      }
+    }
+    return [...map.values()];
+  })();
+
   return (
     <>
     <div className="mx-auto flex w-full min-h-screen max-w-md flex-col gap-7 px-5 pt-6 pb-24">
@@ -278,9 +293,10 @@ export default function DashboardPage() {
               <Skeleton className="h-14 w-full" />
             </div>
           ) : (
-            balances.map((b, i) => (
-              <div
-                key={b.id}
+            groupedBalances.map((b, i) => (
+              <Link
+                key={b.symbol}
+                href={`/asset/${b.symbol}`}
                 className={cn(
                   "hover:bg-accent -mx-4 flex items-center gap-3 px-4 py-3 transition-colors",
                   i > 0 && "border-border border-t",
@@ -300,14 +316,14 @@ export default function DashboardPage() {
                     <span className="font-mono text-sm">
                       {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}
                     </span>
-                    {b.usdValue && (
+                    {b.usdValue !== null && (
                       <span className="text-muted-foreground font-mono text-xs">
-                        {balancesHidden ? "***" : `$${Number(b.usdValue).toFixed(2)}`}
+                        {balancesHidden ? "***" : `$${b.usdValue.toFixed(2)}`}
                       </span>
                     )}
                   </div>
                 </div>
-              </div>
+              </Link>
             ))
           )}
         </div>
