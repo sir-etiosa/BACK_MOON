@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Check, Clock, Copy, History, Share2 } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Check, Clock, Copy, History, Share2, Wallet } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, type Deposit, type Withdrawal } from "@/lib/api";
@@ -77,8 +77,9 @@ export default function AssetDetailPage() {
     );
   }
 
+  const isFiat = symbol === "NGN" || variants[0]?.chain === "fiat";
   const networks = networksForSymbol(symbol, variants[0]?.chain ?? symbol.toLowerCase());
-  const hasMultipleNetworks = networks.length > 1 && variants.length > 0;
+  const hasMultipleNetworks = !isFiat && networks.length > 1 && variants.length > 0;
 
   const totalBalance = variants.reduce((sum, v) => sum + BigInt(v.balance), BigInt(0)).toString();
   const decimals = variants[0]?.decimals ?? 0;
@@ -161,7 +162,62 @@ export default function AssetDetailPage() {
         </div>
       )}
 
-      {selectedNetwork && (
+      {selectedNetwork && isFiat && (
+        <>
+          <Link href="/buy" className={buttonVariants({ className: "h-11 justify-between font-semibold" })}>
+            <span className="flex items-center gap-2">
+              <Wallet className="size-4" />
+              Buy NGN
+            </span>
+          </Link>
+
+          <Button variant="secondary" className="h-11 font-semibold" onClick={() => setHistoryOpen((v) => !v)}>
+            <History className="size-4" />
+            History
+          </Button>
+
+          {historyOpen && (
+            <div className="bg-card border-border rounded-2xl border px-4">
+              {historyEntries.length === 0 ? (
+                <p className="text-muted-foreground py-6 text-center text-sm">No top-ups yet.</p>
+              ) : (
+                historyEntries.map((h, i) => (
+                  <div
+                    key={`${h.kind}-${h.id}`}
+                    className={cn("flex items-center gap-3 py-3", i > 0 && "border-border border-t")}
+                  >
+                    <div className="bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+                      {h.kind === "deposit" ? (
+                        <ArrowDownToLine className="text-muted-foreground size-4" />
+                      ) : (
+                        <ArrowUpFromLine className="text-muted-foreground size-4" />
+                      )}
+                    </div>
+                    <div className="flex flex-1 items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{h.kind === "deposit" ? "Top-up" : "Withdraw"}</span>
+                        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                          <Clock className="size-3" />
+                          {formatDate(h.at)}
+                        </span>
+                      </div>
+                      <div data-numeric className="flex flex-col items-end">
+                        <span className="font-mono text-sm">
+                          {h.kind === "deposit" ? "+" : "-"}
+                          {fromSmallestUnits(h.amount, decimals)}
+                        </span>
+                        <span className="text-muted-foreground text-xs">{h.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {selectedNetwork && !isFiat && (
         <>
           <div className="bg-card border-border flex flex-col items-center gap-4 rounded-2xl border p-5">
             {selectedAddress?.address ? (
