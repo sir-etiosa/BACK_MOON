@@ -182,7 +182,12 @@ export default function DashboardPage() {
         </div>
         {ngnRate !== null && (
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-            <span className="bg-primary size-1.5 rounded-full" />1 USDT ≈ ₦{ngnRate.toLocaleString("en-US", { maximumFractionDigits: 0 })} · Live rate
+            <span className="relative flex size-1.5">
+              <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+              <span className="bg-primary relative inline-flex size-1.5 rounded-full" />
+            </span>
+            1 USDT ≈ ₦{ngnRate.toLocaleString("en-US", { maximumFractionDigits: 0 })} ·{" "}
+            <span className="text-primary animate-pulse font-medium">Live rate</span>
           </div>
         )}
         <Link href="/cashout" className={buttonVariants({ className: "h-11 justify-between font-semibold" })}>

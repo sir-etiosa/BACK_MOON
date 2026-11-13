@@ -102,6 +102,10 @@ export async function verifyCashoutOtp(userId: string, code: string): Promise<vo
   await prisma.cashoutProfile.update({ where: { userId }, data: { verifiedAt: new Date() } });
 }
 
+function capitalizeWords(value: string): string {
+  return value.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export async function saveBankAccount(userId: string, bankName: string, accountNumber: string): Promise<void> {
   const profile = await prisma.cashoutProfile.findUnique({ where: { userId } });
   if (!profile) throw new Error("Enter your legal name first");
@@ -109,6 +113,6 @@ export async function saveBankAccount(userId: string, bankName: string, accountN
 
   await prisma.cashoutProfile.update({
     where: { userId },
-    data: { bankName, accountNumber, completedAt: new Date() },
+    data: { bankName: capitalizeWords(bankName), accountNumber, completedAt: new Date() },
   });
 }

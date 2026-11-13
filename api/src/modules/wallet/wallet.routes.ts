@@ -3,8 +3,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { requireAuth } from "../auth/require-auth.js";
 import { getBalance } from "../../ledger/ledger.service.js";
-import { getUsdPrices, getUsdToNgnRate } from "../trade/price-feed.service.js";
+import { getUsdPrices } from "../trade/price-feed.service.js";
+import { getNgnRate } from "../admin/settings.service.js";
 import { issueAllAddressesForUser } from "./address.service.js";
+
+// Fixed display order across every balance list in the app — unlisted symbols sort last.
+const ASSET_DISPLAY_ORDER = ["BTC", "ETH", "USDT", "USDC", "SOL", "XMR", "LTC"];
 
 export async function walletRoutes(app: FastifyInstance) {
   app.get(
@@ -34,11 +38,15 @@ export async function walletRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const assets = await prisma.asset.findMany({ where: { isActive: true } });
+      const assets = (await prisma.asset.findMany({ where: { isActive: true } })).sort((a, b) => {
+        const ai = ASSET_DISPLAY_ORDER.indexOf(a.symbol);
+        const bi = ASSET_DISPLAY_ORDER.indexOf(b.symbol);
+        return (ai === -1 ? ASSET_DISPLAY_ORDER.length : ai) - (bi === -1 ? ASSET_DISPLAY_ORDER.length : bi);
+      });
       const [rawBalances, prices, ngnRate] = await Promise.all([
         Promise.all(assets.map((asset) => getBalance(req.userId!, asset.id))),
         getUsdPrices(assets.map((a) => a.symbol)),
-        getUsdToNgnRate(),
+        getNgnRate(),
       ]);
 
       const balances = assets.map((asset, i) => {

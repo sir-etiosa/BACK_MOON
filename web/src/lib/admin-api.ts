@@ -1,5 +1,6 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 const ADMIN_TOKEN_KEY = "moonxch_admin_token";
+const ADMIN_ROLE_KEY = "moonxch_admin_role";
 
 export function getAdminToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -12,6 +13,20 @@ export function setAdminToken(token: string): void {
 
 export function clearAdminToken(): void {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(ADMIN_ROLE_KEY);
+}
+
+export function getAdminRole(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ADMIN_ROLE_KEY);
+}
+
+export function setAdminRole(role: string): void {
+  localStorage.setItem(ADMIN_ROLE_KEY, role);
+}
+
+export function isOwnerAdmin(): boolean {
+  return getAdminRole() === "owner";
 }
 
 export class AdminApiError extends Error {
@@ -79,12 +94,38 @@ export interface AdminSupportTicket {
   messages: AdminSupportMessage[];
 }
 
+export interface AdminAccount {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
+export interface AdminCashoutRequest {
+  id: string;
+  userId: string;
+  user: { email: string };
+  sourceAssetId: string;
+  sourceAmount: string;
+  usdcAmount: string;
+  ngnRate: string;
+  ngnAmount: string;
+  accountName: string;
+  bankName: string;
+  accountNumber: string;
+  status: "PENDING" | "PAID" | "REJECTED";
+  requestedAt: string;
+}
+
 export const adminApi = {
-  login: (email: string, password: string) =>
-    request<{ accessToken: string }>("/admin/login", {
+  login: async (email: string, password: string) => {
+    const res = await request<{ accessToken: string; role: string }>("/admin/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
-    }),
+    });
+    setAdminRole(res.role);
+    return res;
+  },
   getWithdrawals: () => request<{ withdrawals: AdminWithdrawal[] }>("/admin/withdrawals"),
   markWithdrawalSent: (id: string, txHash: string) =>
     request<{ withdrawal: AdminWithdrawal }>(`/admin/withdrawals/${id}/mark-sent`, {
@@ -107,4 +148,21 @@ export const adminApi = {
     }),
   clearSupportTicket: (id: string) =>
     request<{ ticket: AdminSupportTicket }>(`/admin/support-messages/${id}/clear`, { method: "POST" }),
+  getAdmins: () => request<{ admins: AdminAccount[] }>("/admin/admins"),
+  createSubAdmin: (email: string, password: string) =>
+    request<{ admin: AdminAccount }>("/admin/admins", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  getRate: () => request<{ rate: number | null }>("/admin/rate"),
+  setRate: (rate: number) =>
+    request<{ rate: number }>("/admin/rate", { method: "POST", body: JSON.stringify({ rate }) }),
+  getCashoutRequests: () => request<{ requests: AdminCashoutRequest[] }>("/admin/cashout-requests"),
+  markCashoutPaid: (id: string) =>
+    request<{ request: AdminCashoutRequest }>(`/admin/cashout-requests/${id}/mark-paid`, { method: "POST" }),
+  rejectCashoutRequest: (id: string, notes?: string) =>
+    request<{ request: AdminCashoutRequest }>(`/admin/cashout-requests/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ notes }),
+    }),
 };

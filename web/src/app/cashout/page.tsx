@@ -11,31 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { api, getToken, type CashoutProfileStatus, ApiError } from "@/lib/api";
+import { api, getToken, type CashoutProfileStatus, type Balance, type CashoutRequest, ApiError } from "@/lib/api";
+import { fromSmallestUnits } from "@/lib/units";
 import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
 
-type WizardStep = "name" | "otp" | "bank" | "done";
+type WizardStep = "name" | "otp" | "bank" | "done" | "amount" | "submitted";
 
-const STEP_INDEX: Record<WizardStep, number> = { name: 0, otp: 1, bank: 2, done: 3 };
+const STEP_INDEX: Record<"name" | "otp" | "bank", number> = { name: 0, otp: 1, bank: 2 };
 
-const COMMON_BANKS = ["GTBank", "Access", "Kuda", "Opay", "Zenith"];
-const MORE_BANKS = [
-  "First Bank",
-  "UBA",
-  "Stanbic IBTC",
-  "Union Bank",
-  "Fidelity",
-  "FCMB",
-  "Sterling",
-  "Wema",
-  "Polaris",
-  "Ecobank",
-  "Providus",
-  "Moniepoint",
-  "PalmPay",
-  "Heritage",
-];
+function capitalizeWords(value: string): string {
+  return value.replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function CashoutPage() {
   const router = useRouter();
@@ -50,9 +37,14 @@ export default function CashoutPage() {
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [code, setCode] = useState("");
-  const [showMoreBanks, setShowMoreBanks] = useState(false);
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+
+  const [balances, setBalances] = useState<Balance[] | null>(null);
+  const [ngnRate, setNgnRate] = useState<number | null>(null);
+  const [assetId, setAssetId] = useState("");
+  const [ngnAmount, setNgnAmount] = useState("");
+  const [submittedRequest, setSubmittedRequest] = useState<CashoutRequest | null>(null);
 
   useEffect(() => {
     if (!getToken()) {
@@ -62,14 +54,21 @@ export default function CashoutPage() {
     show();
     api
       .getCashoutProfile()
-      .then((s) => {
+      .then(async (s) => {
         setStatus(s);
-        setStep(s.step);
         setFirstName(s.firstName ?? "");
         setMiddleName(s.middleName ?? "");
         setLastName(s.lastName ?? "");
         setBankName(s.bankName ?? "");
         setAccountNumber(s.accountNumber ?? "");
+        if (s.step === "done") {
+          setStep("amount");
+          const { balances: b, ngnRate: r } = await api.getBalances();
+          setBalances(b);
+          setNgnRate(r);
+        } else {
+          setStep(s.step);
+        }
       })
       .catch(() => router.push("/login"))
       .finally(hide);
@@ -118,8 +117,11 @@ export default function CashoutPage() {
     setError(null);
     setLoading(true);
     try {
-      await api.saveCashoutBank(bankName, accountNumber.trim());
-      setStep("done");
+      await api.saveCashoutBank(capitalizeWords(bankName.trim()), accountNumber.trim());
+      const { balances: b, ngnRate: r } = await api.getBalances();
+      setBalances(b);
+      setNgnRate(r);
+      setStep("amount");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
@@ -128,6 +130,41 @@ export default function CashoutPage() {
   }
 
   const legalName = [firstName, middleName, lastName].filter(Boolean).join(" ").toUpperCase();
+
+  const selectedAsset = balances?.find((b) => b.id === assetId) ?? null;
+
+  function assetAmountNeeded(asset: Balance, ngn: string): number | null {
+    const ngnNum = Number(ngn);
+    if (!ngnRate || !Number.isFinite(ngnNum) || ngnNum <= 0) return null;
+    const usdNeeded = ngnNum / ngnRate;
+    if (asset.symbol === "USDC") return usdNeeded;
+    const availableWhole = Number(fromSmallestUnits(asset.balance, asset.decimals));
+    const usdValue = Number(asset.usdValue);
+    if (!asset.usdValue || availableWhole <= 0 || usdValue <= 0) return null;
+    const unitPriceUsd = usdValue / availableWhole;
+    return usdNeeded / unitPriceUsd;
+  }
+
+  const neededAssetAmount = selectedAsset ? assetAmountNeeded(selectedAsset, ngnAmount) : null;
+  const availableAssetAmount = selectedAsset ? Number(fromSmallestUnits(selectedAsset.balance, selectedAsset.decimals)) : null;
+  const insufficientBalance =
+    neededAssetAmount !== null && availableAssetAmount !== null && neededAssetAmount > availableAssetAmount;
+
+  async function handleCashoutRequest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!assetId || !ngnAmount) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const { request } = await api.createCashoutRequest(assetId, ngnAmount);
+      setSubmittedRequest(request);
+      setStep("submitted");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-4 p-4 pt-4">
@@ -142,16 +179,17 @@ export default function CashoutPage() {
         <ThemeToggle />
       </div>
 
-      {!status ? null : step === "done" ? (
+      {!status ? null : step === "submitted" && submittedRequest ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
             <div className="bg-primary flex h-11 w-11 items-center justify-center rounded-full">
               <CheckIcon className="text-primary-foreground size-6" strokeWidth={3} />
             </div>
             <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold">Cash-out profile ready</h2>
+              <h2 className="text-lg font-semibold">Cash-out requested</h2>
               <p className="text-muted-foreground text-sm">
-                {bankName} •••• {accountNumber.slice(-4)} will receive your payouts. Cash-out execution is launching soon.
+                ₦{Number(submittedRequest.ngnAmount).toLocaleString()} is on its way to {submittedRequest.bankName} ••••{" "}
+                {submittedRequest.accountNumber.slice(-4)}. We&rsquo;ll notify you once it&rsquo;s paid out.
               </p>
             </div>
             <Button className="mt-2 h-11 w-full font-semibold" onClick={() => router.push("/dashboard")}>
@@ -159,17 +197,98 @@ export default function CashoutPage() {
             </Button>
           </CardContent>
         </Card>
+      ) : step === "amount" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Cash out</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {!balances ? (
+              <p className="text-muted-foreground text-sm">Loading...</p>
+            ) : (
+              <form onSubmit={handleCashoutRequest} className="flex flex-col gap-4">
+                <div className="bg-primary/10 border-primary/30 flex items-center justify-between rounded-xl border px-3.5 py-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-muted-foreground text-xs">Payout account</span>
+                    <span className="text-sm font-semibold">
+                      {bankName} •••• {accountNumber.slice(-4)}
+                    </span>
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
+                    <ShieldCheck className="size-3.5" />
+                    Verified
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label>Cash out from</Label>
+                  <Select value={assetId} onValueChange={(v) => setAssetId(v ?? "")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select asset">
+                        {(value: string | null) => balances.find((b) => b.id === value)?.symbol ?? "Select asset"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {balances.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.symbol} ({fromSmallestUnits(b.balance, b.decimals)} available)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="ngnAmount">Amount (NGN)</Label>
+                  <Input
+                    id="ngnAmount"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={ngnAmount}
+                    onChange={(e) => setNgnAmount(e.target.value)}
+                    required
+                  />
+                  {selectedAsset && neededAssetAmount !== null && (
+                    <p className={cn("text-xs", insufficientBalance ? "text-destructive" : "text-muted-foreground")}>
+                      ≈ {neededAssetAmount.toFixed(8).replace(/0+$/, "").replace(/\.$/, "")} {selectedAsset.symbol}
+                      {insufficientBalance ? " — more than you have available" : ""}
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={loading || !assetId || !ngnAmount || !!insufficientBalance}
+                  className="mt-1 h-11 font-semibold"
+                >
+                  {loading ? "Requesting..." : "Cash out"}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardHeader className="gap-3">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-xs font-medium">Step {STEP_INDEX[step] + 1} of 3</span>
+              <span className="text-muted-foreground text-xs font-medium">
+                Step {STEP_INDEX[step as "name" | "otp" | "bank"] + 1} of 3
+              </span>
             </div>
             <div className="flex gap-1.5">
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className={cn("h-1 flex-1 rounded-full", i <= STEP_INDEX[step] ? "bg-primary" : "bg-muted")}
+                  className={cn(
+                    "h-1 flex-1 rounded-full",
+                    i <= STEP_INDEX[step as "name" | "otp" | "bank"] ? "bg-primary" : "bg-muted",
+                  )}
                 />
               ))}
             </div>
@@ -255,54 +374,21 @@ export default function CashoutPage() {
                     <span className="text-muted-foreground text-xs">Account must be in this name</span>
                     <span className="text-sm font-semibold">{legalName}</span>
                   </div>
-                  <span className="text-primary flex items-center gap-1 text-xs font-medium">
+                  <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
                     <ShieldCheck className="size-3.5" />
                     Verified
                   </span>
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <Label>Bank</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {COMMON_BANKS.map((b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setBankName(b)}
-                        className={cn(
-                          "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-                          bankName === b
-                            ? "bg-primary border-primary text-primary-foreground"
-                            : "border-border hover:bg-accent",
-                        )}
-                      >
-                        {b}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setShowMoreBanks((v) => !v)}
-                      className="border-border hover:bg-accent rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
-                    >
-                      More banks
-                    </button>
-                  </div>
-                  {(showMoreBanks || (bankName && !COMMON_BANKS.includes(bankName))) && (
-                    <Select value={bankName} onValueChange={(v) => setBankName(v ?? "")}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a bank">
-                          {(value: string | null) => value ?? "Select a bank"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MORE_BANKS.map((b) => (
-                          <SelectItem key={b} value={b}>
-                            {b}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  <Label htmlFor="bankName">Bank name</Label>
+                  <Input
+                    id="bankName"
+                    value={bankName}
+                    onChange={(e) => setBankName(capitalizeWords(e.target.value))}
+                    required
+                    autoFocus
+                  />
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -311,7 +397,6 @@ export default function CashoutPage() {
                     id="accountNumber"
                     inputMode="numeric"
                     maxLength={10}
-                    placeholder="0123456789"
                     value={accountNumber}
                     onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
                     required
@@ -320,7 +405,7 @@ export default function CashoutPage() {
 
                 <Button
                   type="submit"
-                  disabled={loading || !bankName || accountNumber.length < 10}
+                  disabled={loading || !bankName.trim() || accountNumber.length < 10}
                   className="mt-1 h-11 font-semibold"
                 >
                   {loading ? "Saving..." : "Save & continue to cash out"}

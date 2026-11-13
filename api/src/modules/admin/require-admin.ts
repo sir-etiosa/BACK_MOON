@@ -21,3 +21,10 @@ export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
     return reply.code(401).send({ error: "Invalid or expired admin token" });
   }
 }
+
+/** Run after requireAdmin — restricts a route to the owner admin role. */
+export async function requireOwnerAdmin(req: FastifyRequest, reply: FastifyReply) {
+  if (req.adminRole !== "owner") {
+    return reply.code(403).send({ error: "Only the owner admin can do this" });
+  }
+}

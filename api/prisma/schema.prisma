@@ -43,6 +43,13 @@ enum LedgerRefType {
   WITHDRAWAL
   TRADE
   ADJUSTMENT
+  CASHOUT
+}
+
+enum CashoutRequestStatus {
+  PENDING
+  PAID
+  REJECTED
 }
 
 enum SupportTicketStatus {
@@ -78,6 +85,7 @@ model User {
   assetRequests   AssetRequest[]
   supportTickets  SupportTicket[]
   cashoutProfile  CashoutProfile?
+  cashoutRequests CashoutRequest[]
 
   @@map("users")
 }
@@ -170,10 +178,12 @@ model Asset {
   contractAddress String?  @map("contract_address")
   isActive        Boolean  @default(true) @map("is_active")
 
-  balances      Balance[]
-  ledgerEntries LedgerEntry[]
-  deposits      Deposit[]
-  withdrawals   Withdrawal[]
+  balances              Balance[]
+  ledgerEntries         LedgerEntry[]
+  deposits              Deposit[]
+  withdrawals           Withdrawal[]
+  cashoutRequestsSource CashoutRequest[] @relation("CashoutRequestSourceAsset")
+  cashoutRequestsUsdc   CashoutRequest[] @relation("CashoutRequestUsdcAsset")
 
   @@unique([symbol, chain])
   @@map("assets")
@@ -315,6 +325,41 @@ model CashoutProfile {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@map("cashout_profiles")
+}
+
+model CashoutRequest {
+  id               String               @id @default(uuid())
+  userId           String               @map("user_id")
+  user             User                 @relation(fields: [userId], references: [id])
+  sourceAssetId    String               @map("source_asset_id")
+  sourceAsset      Asset                @relation("CashoutRequestSourceAsset", fields: [sourceAssetId], references: [id])
+  sourceAmount     Decimal              @map("source_amount") @db.Decimal(38, 0)
+  tradeId          String?              @map("trade_id")
+  usdcAssetId      String               @map("usdc_asset_id")
+  usdcAsset        Asset                @relation("CashoutRequestUsdcAsset", fields: [usdcAssetId], references: [id])
+  usdcAmount       Decimal              @map("usdc_amount") @db.Decimal(38, 0)
+  ngnRate          Decimal              @map("ngn_rate") @db.Decimal(18, 4)
+  ngnAmount        Decimal              @map("ngn_amount") @db.Decimal(18, 2)
+  accountName      String               @map("account_name")
+  bankName         String               @map("bank_name")
+  accountNumber    String               @map("account_number")
+  status           CashoutRequestStatus @default(PENDING)
+  processedByAdmin String?              @map("processed_by_admin_id")
+  processedAt      DateTime?            @map("processed_at")
+  notes            String?
+  requestedAt      DateTime             @default(now()) @map("requested_at")
+
+  @@index([status])
+  @@map("cashout_requests")
+}
+
+model AppSetting {
+  key              String   @id
+  value            String
+  updatedByAdminId String?  @map("updated_by_admin_id")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
 }
 
 model SupportTicketMessage {

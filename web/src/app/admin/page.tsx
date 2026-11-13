@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { LogOut, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -20,10 +21,13 @@ import {
   adminApi,
   getAdminToken,
   clearAdminToken,
+  isOwnerAdmin,
   AdminApiError,
   type AdminWithdrawal,
   type AdminAssetRequest,
   type AdminSupportTicket,
+  type AdminAccount,
+  type AdminCashoutRequest,
 } from "@/lib/admin-api";
 import { fromSmallestUnits } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -51,6 +55,19 @@ export default function AdminDashboardPage() {
 
   const [assetRequests, setAssetRequests] = useState<AdminAssetRequest[] | null>(null);
 
+  const isOwner = isOwnerAdmin();
+  const [cashoutRequests, setCashoutRequests] = useState<AdminCashoutRequest[] | null>(null);
+  const [cashoutActionLoading, setCashoutActionLoading] = useState(false);
+
+  const [rate, setRate] = useState<number | null>(null);
+  const [rateInput, setRateInput] = useState("");
+  const [rateLoading, setRateLoading] = useState(false);
+
+  const [admins, setAdmins] = useState<AdminAccount[] | null>(null);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [adminCreateLoading, setAdminCreateLoading] = useState(false);
+
   useEffect(() => {
     if (!getAdminToken()) {
       router.push("/admin/login");
@@ -73,7 +90,21 @@ export default function AdminDashboardPage() {
       .getAssetRequests()
       .then((r) => setAssetRequests(r.requests))
       .catch(handleAuthError);
-  }, [router]);
+    adminApi
+      .getCashoutRequests()
+      .then((r) => setCashoutRequests(r.requests))
+      .catch(handleAuthError);
+    if (isOwner) {
+      adminApi
+        .getRate()
+        .then((r) => setRate(r.rate))
+        .catch(handleAuthError);
+      adminApi
+        .getAdmins()
+        .then((r) => setAdmins(r.admins))
+        .catch(handleAuthError);
+    }
+  }, [router, isOwner]);
 
   function handleLogout() {
     clearAdminToken();
@@ -150,6 +181,69 @@ export default function AdminDashboardPage() {
     }
   }
 
+  async function handleMarkCashoutPaid(id: string) {
+    setCashoutActionLoading(true);
+    try {
+      await adminApi.markCashoutPaid(id);
+      const { requests: refreshed } = await adminApi.getCashoutRequests();
+      setCashoutRequests(refreshed);
+      toast.success("Marked paid");
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't mark paid.");
+    } finally {
+      setCashoutActionLoading(false);
+    }
+  }
+
+  async function handleRejectCashout(id: string) {
+    setCashoutActionLoading(true);
+    try {
+      await adminApi.rejectCashoutRequest(id);
+      const { requests: refreshed } = await adminApi.getCashoutRequests();
+      setCashoutRequests(refreshed);
+      toast.success("Rejected and refunded");
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't reject.");
+    } finally {
+      setCashoutActionLoading(false);
+    }
+  }
+
+  async function handleSetRate(e: React.FormEvent) {
+    e.preventDefault();
+    const parsed = Number(rateInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    setRateLoading(true);
+    try {
+      const { rate: saved } = await adminApi.setRate(parsed);
+      setRate(saved);
+      setRateInput("");
+      toast.success("Rate updated");
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't update rate.");
+    } finally {
+      setRateLoading(false);
+    }
+  }
+
+  async function handleCreateSubAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newAdminEmail.trim() || newAdminPassword.length < 12) return;
+    setAdminCreateLoading(true);
+    try {
+      await adminApi.createSubAdmin(newAdminEmail.trim(), newAdminPassword);
+      const { admins: refreshed } = await adminApi.getAdmins();
+      setAdmins(refreshed);
+      setNewAdminEmail("");
+      setNewAdminPassword("");
+      toast.success("Sub-admin created");
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't create sub-admin.");
+    } finally {
+      setAdminCreateLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-5 py-6">
       <div className="flex items-center justify-between">
@@ -166,7 +260,10 @@ export default function AdminDashboardPage() {
         <TabsList>
           <TabsTrigger value="support">Support</TabsTrigger>
           <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
+          <TabsTrigger value="cashouts">Cash-outs</TabsTrigger>
           <TabsTrigger value="requests">Asset requests</TabsTrigger>
+          {isOwner && <TabsTrigger value="rate">Rate</TabsTrigger>}
+          {isOwner && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="support" className="flex flex-col gap-2 pt-4">
@@ -257,6 +354,49 @@ export default function AdminDashboardPage() {
           )}
         </TabsContent>
 
+        <TabsContent value="cashouts" className="flex flex-col gap-2 pt-4">
+          {cashoutRequests === null ? (
+            <p className="text-muted-foreground text-sm">Loading...</p>
+          ) : cashoutRequests.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nothing awaiting action.</p>
+          ) : (
+            <div className="bg-card border-border flex flex-col rounded-2xl border px-4">
+              {cashoutRequests.map((r, i) => (
+                <div key={r.id} className={cn("flex flex-col gap-2 py-3.5", i > 0 && "border-border border-t")}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{r.user.email}</span>
+                    <span className="label-eyebrow bg-muted text-muted-foreground rounded-full px-2 py-0.5">
+                      {r.status}
+                    </span>
+                  </div>
+                  <div data-numeric className="font-mono text-sm">
+                    ₦{Number(r.ngnAmount).toLocaleString()}
+                  </div>
+                  <div className="text-muted-foreground text-xs">
+                    {r.bankName} &middot; {r.accountNumber} &middot; {r.accountName}
+                  </div>
+                  <span className="text-muted-foreground text-xs">{formatDate(r.requestedAt)}</span>
+                  {r.status === "PENDING" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" disabled={cashoutActionLoading} onClick={() => handleMarkCashoutPaid(r.id)}>
+                        Mark paid
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={cashoutActionLoading}
+                        onClick={() => handleRejectCashout(r.id)}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="requests" className="flex flex-col gap-2 pt-4">
           {assetRequests === null ? (
             <p className="text-muted-foreground text-sm">Loading...</p>
@@ -278,6 +418,93 @@ export default function AdminDashboardPage() {
             </div>
           )}
         </TabsContent>
+
+        {isOwner && (
+          <TabsContent value="rate" className="flex flex-col gap-3 pt-4">
+            <div className="bg-card border-border flex flex-col gap-3 rounded-2xl border p-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-muted-foreground text-xs">Current rate</span>
+                <span className="font-mono text-lg font-semibold">
+                  {rate === null ? "Not set" : `₦${rate.toLocaleString()} / $1`}
+                </span>
+              </div>
+              <form onSubmit={handleSetRate} className="flex items-end gap-2">
+                <div className="flex flex-1 flex-col gap-1">
+                  <Label htmlFor="rateInput">New USD → NGN rate</Label>
+                  <Input
+                    id="rateInput"
+                    inputMode="decimal"
+                    placeholder="e.g. 1360"
+                    value={rateInput}
+                    onChange={(e) => setRateInput(e.target.value)}
+                    className="h-11"
+                  />
+                </div>
+                <Button type="submit" disabled={rateLoading || !rateInput} className="h-11 font-semibold">
+                  {rateLoading ? "Saving..." : "Set rate"}
+                </Button>
+              </form>
+              <p className="text-muted-foreground text-xs">
+                This rate prices every cash-out request and the app&rsquo;s NGN balance display.
+              </p>
+            </div>
+          </TabsContent>
+        )}
+
+        {isOwner && (
+          <TabsContent value="admins" className="flex flex-col gap-3 pt-4">
+            <form
+              onSubmit={handleCreateSubAdmin}
+              className="bg-card border-border flex flex-col gap-3 rounded-2xl border p-4"
+            >
+              <span className="text-sm font-semibold">Create sub-admin</span>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="newAdminEmail">Email</Label>
+                <Input
+                  id="newAdminEmail"
+                  type="email"
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  className="h-11"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="newAdminPassword">Password</Label>
+                <Input
+                  id="newAdminPassword"
+                  type="password"
+                  minLength={12}
+                  value={newAdminPassword}
+                  onChange={(e) => setNewAdminPassword(e.target.value)}
+                  className="h-11"
+                  required
+                />
+              </div>
+              <Button type="submit" disabled={adminCreateLoading} className="h-11 font-semibold">
+                {adminCreateLoading ? "Creating..." : "Create sub-admin"}
+              </Button>
+            </form>
+
+            {admins === null ? (
+              <p className="text-muted-foreground text-sm">Loading...</p>
+            ) : (
+              <div className="bg-card border-border flex flex-col rounded-2xl border px-4">
+                {admins.map((a, i) => (
+                  <div
+                    key={a.id}
+                    className={cn("flex items-center justify-between gap-2 py-3.5", i > 0 && "border-border border-t")}
+                  >
+                    <span className="text-sm font-medium">{a.email}</span>
+                    <span className="label-eyebrow bg-muted text-muted-foreground rounded-full px-2 py-0.5">
+                      {a.role}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={openTicketId !== null} onOpenChange={(open) => !open && setOpenTicketId(null)}>

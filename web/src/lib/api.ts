@@ -129,6 +129,21 @@ export interface Withdrawal {
   requestedAt: string;
 }
 
+export interface CashoutRequest {
+  id: string;
+  sourceAssetId: string;
+  sourceAmount: string;
+  usdcAssetId: string;
+  usdcAmount: string;
+  ngnRate: string;
+  ngnAmount: string;
+  accountName: string;
+  bankName: string;
+  accountNumber: string;
+  status: "PENDING" | "PAID" | "REJECTED";
+  requestedAt: string;
+}
+
 export const api = {
   refresh: tryRefresh,
   identify: (email: string) =>
@@ -185,4 +200,10 @@ export const api = {
     request<{ ok: true }>("/cashout/otp/verify", { method: "POST", body: JSON.stringify({ code }) }),
   saveCashoutBank: (bankName: string, accountNumber: string) =>
     request<{ ok: true }>("/cashout/bank", { method: "POST", body: JSON.stringify({ bankName, accountNumber }) }),
+  createCashoutRequest: (sourceAssetId: string, ngnAmount: string) =>
+    request<{ request: CashoutRequest }>("/cashout/request", {
+      method: "POST",
+      body: JSON.stringify({ sourceAssetId, ngnAmount }),
+    }),
+  getCashoutRequests: () => request<{ requests: CashoutRequest[] }>("/cashout/requests"),
 };

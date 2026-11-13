@@ -5,16 +5,17 @@ import { prisma } from "../../db/prisma.js";
 
 const ADMIN_TOKEN_TTL = "12h";
 
-export async function loginAdmin(email: string, password: string): Promise<string> {
+export async function loginAdmin(email: string, password: string): Promise<{ accessToken: string; role: string }> {
   const admin = await prisma.adminUser.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!admin) throw new Error("Invalid email or password");
 
   const valid = await bcrypt.compare(password, admin.passwordHash);
   if (!valid) throw new Error("Invalid email or password");
 
-  return jwt.sign({ adminId: admin.id, role: admin.role }, env.APP_JWT_SECRET, {
+  const accessToken = jwt.sign({ adminId: admin.id, role: admin.role }, env.APP_JWT_SECRET, {
     expiresIn: ADMIN_TOKEN_TTL,
   });
+  return { accessToken, role: admin.role };
 }
 
 export function verifyAdminToken(token: string): { adminId: string; role: string } {
