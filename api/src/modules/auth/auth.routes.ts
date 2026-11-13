@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requestLoginOtp, verifyLoginOtp } from "./otp.service.js";
-import { identify, loginWithPassword, setPassword } from "./password.service.js";
+import { identify, loginWithPassword, setPassword, changePassword } from "./password.service.js";
 import { requireAuth } from "./require-auth.js";
 import { rotateSession, revokeSession } from "./session.service.js";
 
@@ -11,6 +11,7 @@ const emailSchema = z.object({ email: z.string().email() });
 const verifySchema = z.object({ email: z.string().email(), code: z.string().length(6) });
 const passwordLoginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const passwordSetSchema = z.object({ password: z.string().min(8) });
+const passwordChangeSchema = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8) });
 
 const emailBodyJsonSchema = {
   type: "object",
@@ -94,6 +95,39 @@ export async function authRoutes(app: FastifyInstance) {
       const { password } = passwordSetSchema.parse(req.body);
       try {
         await setPassword(req.userId!, password);
+        return reply.send({ ok: true });
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.post(
+    "/auth/password/change",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["auth"],
+        summary: "Change this user's password (requires the current one)",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          required: ["currentPassword", "newPassword"],
+          properties: {
+            currentPassword: { type: "string" },
+            newPassword: { type: "string", minLength: 8 },
+          },
+        },
+        response: {
+          200: { type: "object", properties: { ok: { type: "boolean" } } },
+          "4xx": { type: "object", properties: { error: { type: "string" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { currentPassword, newPassword } = passwordChangeSchema.parse(req.body);
+      try {
+        await changePassword(req.userId!, currentPassword, newPassword);
         return reply.send({ ok: true });
       } catch (err) {
         return reply.code(400).send({ error: (err as Error).message });

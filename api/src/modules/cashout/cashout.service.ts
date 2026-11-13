@@ -15,6 +15,13 @@ export interface CashoutProfileStatus {
   accountNumber: string | null;
 }
 
+export interface CashoutBankAccount {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  isDefault: boolean;
+}
+
 async function sendCashoutOtp(userId: string, email: string): Promise<void> {
   const recent = await prisma.authOtp.findFirst({
     where: { userId, purpose: "CASHOUT" },
@@ -34,13 +41,38 @@ async function sendCashoutOtp(userId: string, email: string): Promise<void> {
   await mailer.send(email, subject, text, html);
 }
 
+/** One-time migration for accounts created before multi-bank-account support existed —
+ * the single bankName/accountNumber pair that used to live on CashoutProfile becomes the
+ * first (default) row here, so nothing already saved in production gets lost. */
+async function ensureLegacyAccountMigrated(userId: string): Promise<void> {
+  const existing = await prisma.cashoutBankAccount.count({ where: { userId } });
+  if (existing > 0) return;
+
+  const profile = await prisma.cashoutProfile.findUnique({ where: { userId } });
+  if (!profile?.bankName || !profile.accountNumber) return;
+
+  await prisma.cashoutBankAccount.create({
+    data: { userId, bankName: profile.bankName, accountNumber: profile.accountNumber, isDefault: true },
+  });
+}
+
+export async function listBankAccounts(userId: string): Promise<CashoutBankAccount[]> {
+  await ensureLegacyAccountMigrated(userId);
+  return prisma.cashoutBankAccount.findMany({
+    where: { userId },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    select: { id: true, bankName: true, accountNumber: true, isDefault: true },
+  });
+}
+
 export async function getCashoutStatus(userId: string): Promise<CashoutProfileStatus> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const profile = await prisma.cashoutProfile.findUnique({ where: { userId } });
+  const accounts = profile ? await listBankAccounts(userId) : [];
 
   let step: CashoutProfileStatus["step"] = "name";
   if (profile) {
-    if (profile.bankName && profile.accountNumber) step = "done";
+    if (accounts.length > 0) step = "done";
     else if (profile.verifiedAt) step = "bank";
     else step = "otp";
   }
@@ -51,8 +83,8 @@ export async function getCashoutStatus(userId: string): Promise<CashoutProfileSt
     firstName: profile?.firstName ?? null,
     middleName: profile?.middleName ?? null,
     lastName: profile?.lastName ?? null,
-    bankName: profile?.bankName ?? null,
-    accountNumber: profile?.accountNumber ?? null,
+    bankName: accounts[0]?.bankName ?? null,
+    accountNumber: accounts[0]?.accountNumber ?? null,
   };
 }
 
@@ -106,13 +138,37 @@ function capitalizeWords(value: string): string {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export async function saveBankAccount(userId: string, bankName: string, accountNumber: string): Promise<void> {
+/** Adds a bank account for this user — the first one ever added becomes the default. */
+export async function addBankAccount(userId: string, bankName: string, accountNumber: string): Promise<CashoutBankAccount> {
   const profile = await prisma.cashoutProfile.findUnique({ where: { userId } });
   if (!profile) throw new Error("Enter your legal name first");
   if (!profile.verifiedAt) throw new Error("Verify your email first");
 
-  await prisma.cashoutProfile.update({
-    where: { userId },
-    data: { bankName: capitalizeWords(bankName), accountNumber, completedAt: new Date() },
+  const existingCount = await prisma.cashoutBankAccount.count({ where: { userId } });
+
+  const account = await prisma.cashoutBankAccount.create({
+    data: {
+      userId,
+      bankName: capitalizeWords(bankName),
+      accountNumber,
+      isDefault: existingCount === 0,
+    },
+    select: { id: true, bankName: true, accountNumber: true, isDefault: true },
   });
+
+  if (!profile.completedAt) {
+    await prisma.cashoutProfile.update({ where: { userId }, data: { completedAt: new Date() } });
+  }
+
+  return account;
+}
+
+export async function setDefaultBankAccount(userId: string, accountId: string): Promise<void> {
+  const account = await prisma.cashoutBankAccount.findUnique({ where: { id: accountId } });
+  if (!account || account.userId !== userId) throw new Error("Bank account not found");
+
+  await prisma.$transaction([
+    prisma.cashoutBankAccount.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } }),
+    prisma.cashoutBankAccount.update({ where: { id: accountId }, data: { isDefault: true } }),
+  ]);
 }

@@ -62,3 +62,16 @@ export async function setPassword(userId: string, password: string): Promise<voi
     data: { passwordHash, passwordFailedAttempts: 0, passwordLockedUntil: null },
   });
 }
+
+/** Settings page: changing an already-set password requires the current one. */
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (!user.passwordHash) throw new Error("No password set yet");
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) throw new Error("Current password is incorrect");
+
+  assertValidPassword(newPassword);
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+}

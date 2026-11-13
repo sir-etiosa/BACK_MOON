@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Receipt,
   Settings,
+  Wallet,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,10 +36,11 @@ const ASSET_COLOR: Record<string, string> = {
 };
 
 const QUICK_ACTIONS = [
+  { href: "/buy", label: "Buy", icon: Wallet },
   { href: "/deposit", label: "Deposit", icon: ArrowDownToLine },
   { href: "/swap", label: "Swap", icon: ArrowLeftRight },
-  { href: "/pay", label: "Pay bills", icon: Receipt },
-  { href: "/more", label: "Trade & more", icon: MoreHorizontal },
+  { href: "/pay", label: "Bills", icon: Receipt },
+  { href: "/more", label: "More", icon: MoreHorizontal },
 ] as const;
 
 const FOOTER_NAV = [
@@ -138,8 +140,8 @@ export default function DashboardPage() {
               {balancesHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
             </button>
           </div>
-          <Link href="/settings" aria-label="Settings" className={buttonVariants({ variant: "ghost", size: "icon-sm" })}>
-            <Settings className="size-4" />
+          <Link href="/settings" aria-label="Settings" className={buttonVariants({ variant: "ghost", size: "icon-lg" })}>
+            <Settings className="size-6" />
           </Link>
         </div>
         {totalUsd === null ? (
@@ -178,7 +180,6 @@ export default function DashboardPage() {
       <div className="bg-card border-border flex flex-col gap-3 rounded-2xl border p-[18px]">
         <div className="flex flex-col gap-0.5">
           <h2 className="font-semibold">Cash out to your bank</h2>
-          <p className="text-muted-foreground text-sm">Crypto & stables to naira.</p>
         </div>
         {ngnRate !== null && (
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
@@ -187,7 +188,7 @@ export default function DashboardPage() {
               <span className="bg-primary relative inline-flex size-1.5 rounded-full" />
             </span>
             1 USDT ≈ ₦{ngnRate.toLocaleString("en-US", { maximumFractionDigits: 0 })} ·{" "}
-            <span className="text-primary animate-pulse font-medium">Live rate</span>
+            <span className="animate-pulse font-medium text-green-600 dark:text-green-500">Live rate</span>
           </div>
         )}
         <Link href="/cashout" className={buttonVariants({ className: "h-11 justify-between font-semibold" })}>
@@ -196,7 +197,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-5 gap-1.5">
         {QUICK_ACTIONS.map(({ href, label, icon: Icon }) => (
           <Link
             key={label}

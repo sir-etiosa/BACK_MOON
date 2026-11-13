@@ -89,6 +89,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
+  const [isReset, setIsReset] = useState(false);
 
   useEffect(() => {
     if (getToken()) {
@@ -186,6 +187,12 @@ export default function LoginPage() {
     try {
       const { accessToken, needsPassword } = await api.verifyOtp(email, code);
       setToken(accessToken);
+      if (isReset) {
+        setNewPassword("");
+        setConfirmPassword("");
+        setStep("set-password");
+        return;
+      }
       if (!needsPassword) {
         setLastEmail(email);
         clearExplicitLogout();
@@ -197,6 +204,25 @@ export default function LoginPage() {
         await api.getAddresses();
       } catch {}
       setStep("set-password");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError("Enter your email first");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      await api.requestOtp(email);
+      setIsReset(true);
+      setCode("");
+      setStep("otp");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
@@ -216,6 +242,10 @@ export default function LoginPage() {
       await api.setPassword(newPassword);
       setLastEmail(email);
       clearExplicitLogout();
+      if (isReset) {
+        router.push("/dashboard");
+        return;
+      }
       setShowCongrats(true);
       fireConfetti();
     } catch (err) {
@@ -229,6 +259,7 @@ export default function LoginPage() {
     setEmail("");
     setPassword("");
     setError(null);
+    setIsReset(false);
     setStep("email-password");
   }
 
@@ -236,12 +267,16 @@ export default function LoginPage() {
     setEmail("");
     setPassword("");
     setError(null);
+    setIsReset(false);
     setStep("signup-email");
   }
 
   if (!step) return null;
 
-  const { title, subtitle } = COPY[step];
+  const { title, subtitle } =
+    step === "set-password" && isReset
+      ? { title: "Reset your password.", subtitle: () => "Choose a new password to sign back in with." }
+      : COPY[step];
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6">
@@ -310,7 +345,17 @@ export default function LoginPage() {
               autoFocus
               className="h-11"
             />
-            <span className="label-eyebrow mt-1">Password</span>
+            <div className="flex items-center justify-between">
+              <span className="label-eyebrow">Password</span>
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={loading}
+                className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
             <Input
               type="password"
               value={password}
@@ -390,6 +435,14 @@ export default function LoginPage() {
             <Button type="submit" disabled={loading} className="mt-1 h-11 font-semibold">
               {loading ? "Signing in..." : "Log in"}
             </Button>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={loading}
+              className="text-muted-foreground hover:text-foreground py-1 text-sm transition-colors"
+            >
+              Forgot password?
+            </button>
           </form>
         )}
 
@@ -414,6 +467,7 @@ export default function LoginPage() {
               onClick={() => {
                 setCode("");
                 setError(null);
+                setIsReset(false);
                 setStep("email-password");
               }}
               className="text-muted-foreground hover:text-foreground py-1 text-sm transition-colors"

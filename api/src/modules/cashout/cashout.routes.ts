@@ -7,7 +7,9 @@ import {
   submitLegalName,
   resendCashoutOtp,
   verifyCashoutOtp,
-  saveBankAccount,
+  listBankAccounts,
+  addBankAccount,
+  setDefaultBankAccount,
 } from "./cashout.service.js";
 import {
   createCashoutRequest,
@@ -34,6 +36,7 @@ const bankSchema = z.object({
 const createRequestSchema = z.object({
   sourceAssetId: z.string().uuid(),
   ngnAmount: z.string(),
+  bankAccountId: z.string().uuid(),
 });
 
 const rejectSchema = z.object({ notes: z.string().optional() });
@@ -143,7 +146,7 @@ export async function cashoutRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         tags: ["cashout"],
-        summary: "Save the bank account to cash out to",
+        summary: "Save the first bank account to cash out to (wizard step)",
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",
@@ -158,7 +161,74 @@ export async function cashoutRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { bankName, accountNumber } = bankSchema.parse(req.body);
       try {
-        await saveBankAccount(req.userId!, bankName, accountNumber);
+        await addBankAccount(req.userId!, bankName, accountNumber);
+        return reply.send({ ok: true });
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.get(
+    "/cashout/accounts",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["cashout"],
+        summary: "List this user's saved cash-out bank accounts",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (req, reply) => {
+      const accounts = await listBankAccounts(req.userId!);
+      return reply.send({ accounts });
+    },
+  );
+
+  app.post(
+    "/cashout/accounts",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["cashout"],
+        summary: "Add another cash-out bank account",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          required: ["bankName", "accountNumber"],
+          properties: {
+            bankName: { type: "string" },
+            accountNumber: { type: "string" },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { bankName, accountNumber } = bankSchema.parse(req.body);
+      try {
+        const account = await addBankAccount(req.userId!, bankName, accountNumber);
+        return reply.code(201).send({ account });
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.post(
+    "/cashout/accounts/:id/default",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["cashout"],
+        summary: "Set a saved bank account as the default",
+        security: [{ bearerAuth: [] }],
+        params: idParamSchema,
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      try {
+        await setDefaultBankAccount(req.userId!, id);
         return reply.send({ ok: true });
       } catch (err) {
         return reply.code(400).send({ error: (err as Error).message });
@@ -176,18 +246,19 @@ export async function cashoutRoutes(app: FastifyInstance) {
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",
-          required: ["sourceAssetId", "ngnAmount"],
+          required: ["sourceAssetId", "ngnAmount", "bankAccountId"],
           properties: {
             sourceAssetId: { type: "string", format: "uuid" },
             ngnAmount: { type: "string" },
+            bankAccountId: { type: "string", format: "uuid" },
           },
         },
       },
     },
     async (req, reply) => {
-      const { sourceAssetId, ngnAmount } = createRequestSchema.parse(req.body);
+      const { sourceAssetId, ngnAmount, bankAccountId } = createRequestSchema.parse(req.body);
       try {
-        const request = await createCashoutRequest({ userId: req.userId!, sourceAssetId, ngnAmount });
+        const request = await createCashoutRequest({ userId: req.userId!, sourceAssetId, ngnAmount, bankAccountId });
         return reply.code(201).send({ request });
       } catch (err) {
         if (err instanceof InsufficientBalanceError) {

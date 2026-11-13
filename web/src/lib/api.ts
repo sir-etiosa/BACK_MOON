@@ -129,6 +129,13 @@ export interface Withdrawal {
   requestedAt: string;
 }
 
+export interface CashoutBankAccount {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  isDefault: boolean;
+}
+
 export interface CashoutRequest {
   id: string;
   sourceAssetId: string;
@@ -158,6 +165,11 @@ export const api = {
     }),
   setPassword: (password: string) =>
     request<{ ok: true }>("/auth/password/set", { method: "POST", body: JSON.stringify({ password }) }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: true }>("/auth/password/change", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   requestOtp: (email: string) => request<{ ok: true }>("/auth/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     request<{ accessToken: string; needsPassword: boolean }>("/auth/otp/verify", {
@@ -200,10 +212,18 @@ export const api = {
     request<{ ok: true }>("/cashout/otp/verify", { method: "POST", body: JSON.stringify({ code }) }),
   saveCashoutBank: (bankName: string, accountNumber: string) =>
     request<{ ok: true }>("/cashout/bank", { method: "POST", body: JSON.stringify({ bankName, accountNumber }) }),
-  createCashoutRequest: (sourceAssetId: string, ngnAmount: string) =>
+  getCashoutAccounts: () => request<{ accounts: CashoutBankAccount[] }>("/cashout/accounts"),
+  addCashoutAccount: (bankName: string, accountNumber: string) =>
+    request<{ account: CashoutBankAccount }>("/cashout/accounts", {
+      method: "POST",
+      body: JSON.stringify({ bankName, accountNumber }),
+    }),
+  setDefaultCashoutAccount: (id: string) =>
+    request<{ ok: true }>(`/cashout/accounts/${id}/default`, { method: "POST" }),
+  createCashoutRequest: (sourceAssetId: string, ngnAmount: string, bankAccountId: string) =>
     request<{ request: CashoutRequest }>("/cashout/request", {
       method: "POST",
-      body: JSON.stringify({ sourceAssetId, ngnAmount }),
+      body: JSON.stringify({ sourceAssetId, ngnAmount, bankAccountId }),
     }),
   getCashoutRequests: () => request<{ requests: CashoutRequest[] }>("/cashout/requests"),
 };

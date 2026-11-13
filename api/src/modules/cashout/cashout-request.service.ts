@@ -16,12 +16,18 @@ interface CreateCashoutRequestInput {
   userId: string;
   sourceAssetId: string;
   ngnAmount: string | number;
+  bankAccountId: string;
 }
 
 export async function createCashoutRequest(input: CreateCashoutRequestInput) {
   const profile = await prisma.cashoutProfile.findUnique({ where: { userId: input.userId } });
-  if (!profile || !profile.bankName || !profile.accountNumber) {
+  if (!profile) {
     throw new Error("Set up your cash-out bank account first");
+  }
+
+  const bankAccount = await prisma.cashoutBankAccount.findUnique({ where: { id: input.bankAccountId } });
+  if (!bankAccount || bankAccount.userId !== input.userId) {
+    throw new Error("Select a valid bank account");
   }
 
   const ngnAmount = new Prisma.Decimal(input.ngnAmount);
@@ -79,8 +85,8 @@ export async function createCashoutRequest(input: CreateCashoutRequestInput) {
         ngnRate,
         ngnAmount,
         accountName,
-        bankName: profile.bankName!,
-        accountNumber: profile.accountNumber!,
+        bankName: bankAccount.bankName,
+        accountNumber: bankAccount.accountNumber,
         status: "PENDING",
       },
     });

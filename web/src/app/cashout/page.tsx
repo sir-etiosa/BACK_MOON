@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CheckIcon, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckIcon, Plus, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,18 +11,23 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { api, getToken, type CashoutProfileStatus, type Balance, type CashoutRequest, ApiError } from "@/lib/api";
+import { AddBankAccountDialog } from "@/components/add-bank-account-dialog";
+import {
+  api,
+  getToken,
+  type CashoutProfileStatus,
+  type Balance,
+  type CashoutBankAccount,
+  type CashoutRequest,
+  ApiError,
+} from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
 import { useLoading } from "@/components/loading-overlay";
-import { cn } from "@/lib/utils";
+import { cn, capitalizeWords } from "@/lib/utils";
 
 type WizardStep = "name" | "otp" | "bank" | "done" | "amount" | "submitted";
 
 const STEP_INDEX: Record<"name" | "otp" | "bank", number> = { name: 0, otp: 1, bank: 2 };
-
-function capitalizeWords(value: string): string {
-  return value.replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export default function CashoutPage() {
   const router = useRouter();
@@ -46,6 +51,10 @@ export default function CashoutPage() {
   const [ngnAmount, setNgnAmount] = useState("");
   const [submittedRequest, setSubmittedRequest] = useState<CashoutRequest | null>(null);
 
+  const [accounts, setAccounts] = useState<CashoutBankAccount[] | null>(null);
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
+
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
@@ -63,9 +72,14 @@ export default function CashoutPage() {
         setAccountNumber(s.accountNumber ?? "");
         if (s.step === "done") {
           setStep("amount");
-          const { balances: b, ngnRate: r } = await api.getBalances();
+          const [{ balances: b, ngnRate: r }, { accounts: a }] = await Promise.all([
+            api.getBalances(),
+            api.getCashoutAccounts(),
+          ]);
           setBalances(b);
           setNgnRate(r);
+          setAccounts(a);
+          setBankAccountId(a.find((acc) => acc.isDefault)?.id ?? a[0]?.id ?? "");
         } else {
           setStep(s.step);
         }
@@ -118,9 +132,14 @@ export default function CashoutPage() {
     setLoading(true);
     try {
       await api.saveCashoutBank(capitalizeWords(bankName.trim()), accountNumber.trim());
-      const { balances: b, ngnRate: r } = await api.getBalances();
+      const [{ balances: b, ngnRate: r }, { accounts: a }] = await Promise.all([
+        api.getBalances(),
+        api.getCashoutAccounts(),
+      ]);
       setBalances(b);
       setNgnRate(r);
+      setAccounts(a);
+      setBankAccountId(a.find((acc) => acc.isDefault)?.id ?? a[0]?.id ?? "");
       setStep("amount");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
@@ -152,11 +171,11 @@ export default function CashoutPage() {
 
   async function handleCashoutRequest(e: React.FormEvent) {
     e.preventDefault();
-    if (!assetId || !ngnAmount) return;
+    if (!assetId || !ngnAmount || !bankAccountId) return;
     setError(null);
     setLoading(true);
     try {
-      const { request } = await api.createCashoutRequest(assetId, ngnAmount);
+      const { request } = await api.createCashoutRequest(assetId, ngnAmount, bankAccountId);
       setSubmittedRequest(request);
       setStep("submitted");
     } catch (err) {
@@ -213,17 +232,47 @@ export default function CashoutPage() {
               <p className="text-muted-foreground text-sm">Loading...</p>
             ) : (
               <form onSubmit={handleCashoutRequest} className="flex flex-col gap-4">
-                <div className="bg-primary/10 border-primary/30 flex items-center justify-between rounded-xl border px-3.5 py-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-muted-foreground text-xs">Payout account</span>
-                    <span className="text-sm font-semibold">
-                      {bankName} •••• {accountNumber.slice(-4)}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Payout account</Label>
+                    <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
+                      <ShieldCheck className="size-3.5" />
+                      Verified name
                     </span>
                   </div>
-                  <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
-                    <ShieldCheck className="size-3.5" />
-                    Verified
-                  </span>
+                  <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1">
+                    {accounts?.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setBankAccountId(a.id)}
+                        className={cn(
+                          "flex w-44 shrink-0 flex-col gap-2 rounded-xl border px-3.5 py-3 text-left transition-colors",
+                          bankAccountId === a.id
+                            ? "bg-primary/10 border-primary"
+                            : "border-border hover:bg-accent",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">{a.bankName}</span>
+                          {a.isDefault && (
+                            <span className="label-eyebrow bg-primary/15 text-primary shrink-0 rounded-full px-2 py-0.5">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground font-mono text-xs">•••• {a.accountNumber.slice(-4)}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setAddAccountOpen(true)}
+                      className="border-border hover:bg-accent text-muted-foreground flex w-28 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed py-3"
+                    >
+                      <Plus className="size-4" />
+                      <span className="text-xs font-medium">Add account</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -264,7 +313,7 @@ export default function CashoutPage() {
 
                 <Button
                   type="submit"
-                  disabled={loading || !assetId || !ngnAmount || !!insufficientBalance}
+                  disabled={loading || !assetId || !ngnAmount || !bankAccountId || !!insufficientBalance}
                   className="mt-1 h-11 font-semibold"
                 >
                   {loading ? "Requesting..." : "Cash out"}
@@ -415,6 +464,15 @@ export default function CashoutPage() {
           </CardContent>
         </Card>
       )}
+
+      <AddBankAccountDialog
+        open={addAccountOpen}
+        onOpenChange={setAddAccountOpen}
+        onAdded={(account) => {
+          setAccounts((prev) => [...(prev ?? []), account]);
+          setBankAccountId(account.id);
+        }}
+      />
     </div>
   );
 }

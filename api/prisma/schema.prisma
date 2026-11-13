@@ -72,34 +72,35 @@ model User {
   passwordFailedAttempts Int       @default(0)
   passwordLockedUntil    DateTime?
 
-  sessions        Session[]
-  otps            AuthOtp[]
-  addresses       UserAddress[]
-  moneroAddresses MoneroSubaddress[]
-  balances        Balance[]
-  ledgerEntries   LedgerEntry[]
-  deposits        Deposit[]
-  withdrawals     Withdrawal[]
-  tradesAsA       Trade[]   @relation("TradeUserA")
-  tradesAsB       Trade[]   @relation("TradeUserB")
-  assetRequests   AssetRequest[]
-  supportTickets  SupportTicket[]
-  cashoutProfile  CashoutProfile?
-  cashoutRequests CashoutRequest[]
+  sessions            Session[]
+  otps                AuthOtp[]
+  addresses           UserAddress[]
+  moneroAddresses     MoneroSubaddress[]
+  balances            Balance[]
+  ledgerEntries       LedgerEntry[]
+  deposits            Deposit[]
+  withdrawals         Withdrawal[]
+  tradesAsA           Trade[]              @relation("TradeUserA")
+  tradesAsB           Trade[]              @relation("TradeUserB")
+  assetRequests       AssetRequest[]
+  supportTickets      SupportTicket[]
+  cashoutProfile      CashoutProfile?
+  cashoutRequests     CashoutRequest[]
+  cashoutBankAccounts CashoutBankAccount[]
 
   @@map("users")
 }
 
 model AuthOtp {
-  id         String      @id @default(uuid())
-  userId     String      @map("user_id")
-  user       User        @relation(fields: [userId], references: [id])
-  codeHash   String      @map("code_hash")
-  purpose    OtpPurpose  @default(LOGIN)
-  expiresAt  DateTime    @map("expires_at")
-  attempts   Int         @default(0)
-  consumedAt DateTime?   @map("consumed_at")
-  createdAt  DateTime    @default(now()) @map("created_at")
+  id         String     @id @default(uuid())
+  userId     String     @map("user_id")
+  user       User       @relation(fields: [userId], references: [id])
+  codeHash   String     @map("code_hash")
+  purpose    OtpPurpose @default(LOGIN)
+  expiresAt  DateTime   @map("expires_at")
+  attempts   Int        @default(0)
+  consumedAt DateTime?  @map("consumed_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
 
   @@index([userId, purpose])
   @@map("auth_otps")
@@ -171,12 +172,12 @@ model AddressPool {
 }
 
 model Asset {
-  id              String   @id @default(uuid())
+  id              String  @id @default(uuid())
   symbol          String
   chain           String
   decimals        Int
-  contractAddress String?  @map("contract_address")
-  isActive        Boolean  @default(true) @map("is_active")
+  contractAddress String? @map("contract_address")
+  isActive        Boolean @default(true) @map("is_active")
 
   balances              Balance[]
   ledgerEntries         LedgerEntry[]
@@ -214,9 +215,9 @@ model LedgerEntry {
   balanceAfter Decimal         @map("balance_after") @db.Decimal(38, 0)
   createdAt    DateTime        @default(now()) @map("created_at")
 
+  @@unique([refType, refId, userId, direction], name: "ledger_dedupe")
   @@index([userId, assetId])
   @@index([refType, refId])
-  @@unique([refType, refId, userId, direction], name: "ledger_dedupe")
   @@map("ledger_entries")
 }
 
@@ -239,36 +240,36 @@ model Deposit {
 }
 
 model Withdrawal {
-  id               String            @id @default(uuid())
-  userId           String            @map("user_id")
-  user             User              @relation(fields: [userId], references: [id])
-  assetId          String            @map("asset_id")
-  asset            Asset             @relation(fields: [assetId], references: [id])
-  toAddress        String            @map("to_address")
-  amount           Decimal           @db.Decimal(38, 0)
-  status           WithdrawalStatus  @default(PENDING)
-  txHash           String?           @map("tx_hash")
-  processedByAdmin String?           @map("processed_by_admin_id")
-  processedAt      DateTime?         @map("processed_at")
+  id               String           @id @default(uuid())
+  userId           String           @map("user_id")
+  user             User             @relation(fields: [userId], references: [id])
+  assetId          String           @map("asset_id")
+  asset            Asset            @relation(fields: [assetId], references: [id])
+  toAddress        String           @map("to_address")
+  amount           Decimal          @db.Decimal(38, 0)
+  status           WithdrawalStatus @default(PENDING)
+  txHash           String?          @map("tx_hash")
+  processedByAdmin String?          @map("processed_by_admin_id")
+  processedAt      DateTime?        @map("processed_at")
   notes            String?
-  requestedAt      DateTime          @default(now()) @map("requested_at")
+  requestedAt      DateTime         @default(now()) @map("requested_at")
 
   @@index([status])
   @@map("withdrawals")
 }
 
 model Trade {
-  id             String      @id @default(uuid())
-  userAId        String      @map("user_a_id")
-  userA          User        @relation("TradeUserA", fields: [userAId], references: [id])
-  userBId        String      @map("user_b_id")
-  userB          User        @relation("TradeUserB", fields: [userBId], references: [id])
-  assetGivenId   String      @map("asset_given_id")
-  amountGiven    Decimal     @map("amount_given") @db.Decimal(38, 0)
-  assetReceivedId String     @map("asset_received_id")
-  amountReceived Decimal     @map("amount_received") @db.Decimal(38, 0)
-  status         TradeStatus @default(PENDING)
-  createdAt      DateTime    @default(now()) @map("created_at")
+  id              String      @id @default(uuid())
+  userAId         String      @map("user_a_id")
+  userA           User        @relation("TradeUserA", fields: [userAId], references: [id])
+  userBId         String      @map("user_b_id")
+  userB           User        @relation("TradeUserB", fields: [userBId], references: [id])
+  assetGivenId    String      @map("asset_given_id")
+  amountGiven     Decimal     @map("amount_given") @db.Decimal(38, 0)
+  assetReceivedId String      @map("asset_received_id")
+  amountReceived  Decimal     @map("amount_received") @db.Decimal(38, 0)
+  status          TradeStatus @default(PENDING)
+  createdAt       DateTime    @default(now()) @map("created_at")
 
   @@map("trades")
 }
@@ -325,6 +326,20 @@ model CashoutProfile {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@map("cashout_profiles")
+}
+
+model CashoutBankAccount {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id])
+  bankName      String   @map("bank_name")
+  accountNumber String   @map("account_number")
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, bankName, accountNumber])
+  @@index([userId])
+  @@map("cashout_bank_accounts")
 }
 
 model CashoutRequest {
