@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        chain: [evm, tron, ltc, btc]
+        chain: [evm, tron, ltc, btc, solana]
     steps:
       - name: Poll ${{ matrix.chain }} watcher
         run: |
