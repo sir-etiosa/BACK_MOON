@@ -3,7 +3,7 @@ import { prisma } from "../../db/prisma.js";
 import { recordAndCreditIfReady } from "./deposit-helper.js";
 import { fetchWithTimeout } from "./fetch-with-timeout.js";
 
-const REQUIRED_CONFIRMATIONS = 12;
+const REQUIRED_CONFIRMATIONS = 2;
 
 // Etherscan's V2 API covers 50+ EVM chains through one endpoint/key, keyed by chainid.
 // Base reuses the exact same address as mainnet (same xpub, same secp256k1 derivation —

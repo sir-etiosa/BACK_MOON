@@ -4,6 +4,13 @@ name: Watch for deposits
 # workflows as "best effort" — under load they can run a few minutes late. That's fine here;
 # we just need deposits detected within a few minutes, not to the second.
 #
+# All chains are polled sequentially inside ONE job (not a matrix) deliberately: GitHub
+# Actions bills a minimum of 1 minute per job regardless of how fast it actually finishes,
+# so 5 matrix jobs every 2 minutes burns ~5x the Actions-minutes of a single job doing the
+# same work in sequence — enough to exhaust a free account's monthly quota in under a day
+# and silently stop the whole schedule (GitHub doesn't disable the workflow when this
+# happens, it just stops triggering new runs — easy to miss).
+#
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
 #   API_BASE_URL  — e.g. https://your-app.vercel.app (no trailing slash)
 #   CRON_SECRET   — must match CRON_SECRET in the API's environment
@@ -16,12 +23,12 @@ on:
 jobs:
   watch:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        chain: [evm, tron, ltc, btc, solana]
     steps:
-      - name: Poll ${{ matrix.chain }} watcher
+      - name: Poll all chain watchers
         run: |
-          curl -sf --max-time 60 \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.API_BASE_URL }}/cron/watch-${{ matrix.chain }}"
+          for chain in evm tron ltc btc solana; do
+            echo "Polling $chain..."
+            curl -sf --max-time 60 \
+              -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+              "${{ secrets.API_BASE_URL }}/cron/watch-$chain" || echo "$chain watcher failed (non-fatal, next run will retry)"
+          done
