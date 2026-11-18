@@ -117,6 +117,18 @@ export interface AdminCashoutRequest {
   requestedAt: string;
 }
 
+export interface AssetExposureRow {
+  assetId: string;
+  symbol: string;
+  chain: string;
+  decimals: number;
+  onchainTotalMinor: string | null;
+  onchainNote?: string;
+  userLedgerTotalMinor: string;
+  treasuryLedgerBalanceMinor: string;
+  gapMinor: string | null;
+}
+
 export const adminApi = {
   login: async (email: string, password: string) => {
     const res = await request<{ accessToken: string; role: string }>("/admin/login", {
@@ -154,6 +166,7 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  deleteAdmin: (id: string) => request<{ ok: true }>(`/admin/admins/${id}`, { method: "DELETE" }),
   getRate: () => request<{ rate: number | null }>("/admin/rate"),
   setRate: (rate: number) =>
     request<{ rate: number }>("/admin/rate", { method: "POST", body: JSON.stringify({ rate }) }),
@@ -165,4 +178,5 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ notes }),
     }),
+  getTreasuryExposure: () => request<{ rows: AssetExposureRow[] }>("/admin/treasury/exposure"),
 };

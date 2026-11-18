@@ -6,6 +6,7 @@ import {
   deriveBtcAddress,
   deriveLtcAddress,
 } from "../../chains/address-derivation.js";
+import { moneroWalletRpcCall } from "../../chains/monero-wallet-rpc.js";
 
 const XPUB_DERIVERS: Record<string, (xpub: string, index: number) => string> = {
   evm: deriveEvmAddress,
@@ -49,11 +50,30 @@ async function issueXpubAddress(userId: string, chain: string) {
 }
 
 /**
- * Pool-based chains: Solana (ed25519 can't do public-only derivation) and Monero (not BIP32 at
- * all — real subaddress minting needs a live view-only wallet-rpc we haven't deployed yet).
- * Both draw from a pre-generated batch of addresses instead of deriving on demand. For Monero
- * specifically this means deposit addresses work today; detecting/crediting deposits on that
- * chain stays a manual, paused process until wallet-rpc is deployed — intentional for now.
+ * Monero: not BIP32 at all — a live view-only wallet-rpc mints real subaddresses on
+ * demand, unlimited, one per user, no pre-generation or pool needed (unlike Solana).
+ * The spend key never comes near this server — wallet-rpc only ever holds the view
+ * key, which can see funds but never move them.
+ */
+async function issueMoneroAddress(userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.userAddress.findUnique({ where: { userId_chain: { userId, chain: "monero" } } });
+    if (existing) return existing;
+
+    const result = await moneroWalletRpcCall<{ address: string; address_index: number }>("create_address", {
+      account_index: 0,
+      label: `user:${userId}`,
+    });
+
+    return tx.userAddress.create({
+      data: { userId, chain: "monero", derivationIndex: result.address_index, address: result.address },
+    });
+  });
+}
+
+/**
+ * Pool-based: Solana (ed25519 can't do public-only derivation, so addresses are
+ * pre-generated offline in batches and imported — see offline-derive-solana-addresses.ts).
  */
 async function issuePoolAddress(userId: string, chain: string) {
   return prisma.$transaction(async (tx) => {
@@ -85,9 +105,49 @@ async function issuePoolAddress(userId: string, chain: string) {
   });
 }
 
-const POOL_CHAINS = new Set(["solana", "monero"]);
+const POOL_CHAINS = new Set(["solana"]);
+
+/**
+ * Inventory + allotment check for pool-based chains. `assigned` comes from
+ * address_pool (the claim side), `usersWithAddress` from user_addresses (the
+ * grant side) — these two must always match. A mismatch would mean a pool row
+ * got claimed without a user_addresses row ever being written (or vice versa),
+ * which the issuePoolAddress() transaction is designed to make impossible, so
+ * this is a belly-and-braces check rather than a thing expected to ever fire.
+ */
+export async function getAddressPoolStatus() {
+  const chains = [...POOL_CHAINS];
+  return Promise.all(
+    chains.map(async (chain) => {
+      const [totalImported, assigned, usersWithAddress] = await Promise.all([
+        prisma.addressPool.count({ where: { chain } }),
+        prisma.addressPool.count({ where: { chain, assignedUserId: { not: null } } }),
+        prisma.userAddress.count({ where: { chain } }),
+      ]);
+      return {
+        chain,
+        totalImported,
+        assigned,
+        unassigned: totalImported - assigned,
+        usersWithAddress,
+        mismatch: assigned !== usersWithAddress,
+      };
+    }),
+  );
+}
+
+/** Look up a single address across both tables — confirms it was imported, whether
+ * it's been claimed, and which user (if any) actually holds it as their deposit address. */
+export async function lookupPoolAddress(address: string) {
+  const [poolRow, userAddressRow] = await Promise.all([
+    prisma.addressPool.findUnique({ where: { address } }),
+    prisma.userAddress.findFirst({ where: { address } }),
+  ]);
+  return { poolRow, userAddressRow };
+}
 
 export async function issueAddress(userId: string, chain: string) {
+  if (chain === "monero") return issueMoneroAddress(userId);
   if (POOL_CHAINS.has(chain)) return issuePoolAddress(userId, chain);
   return issueXpubAddress(userId, chain);
 }

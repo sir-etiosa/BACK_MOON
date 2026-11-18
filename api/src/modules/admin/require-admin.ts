@@ -28,3 +28,12 @@ export async function requireOwnerAdmin(req: FastifyRequest, reply: FastifyReply
     return reply.code(403).send({ error: "Only the owner admin can do this" });
   }
 }
+
+/** Run after requireAdmin — restricts a route to the separately-scoped regulator
+ * role. `AdminUser.role` is a plain string (not an enum), so this is just a new value
+ * alongside "owner"/"operator" — zero migration risk. */
+export async function requireRegulatorAdmin(req: FastifyRequest, reply: FastifyReply) {
+  if (req.adminRole !== "regulator") {
+    return reply.code(403).send({ error: "Only a regulator account can do this" });
+  }
+}

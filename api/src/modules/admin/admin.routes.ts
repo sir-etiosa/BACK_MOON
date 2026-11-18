@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { loginAdmin } from "./admin-auth.service.js";
 import { requireAdmin, requireOwnerAdmin } from "./require-admin.js";
-import { createSubAdmin, listAdmins } from "./admin-management.service.js";
+import { createSubAdmin, listAdmins, deleteAdmin } from "./admin-management.service.js";
 import { getNgnRate, setNgnRate } from "./settings.service.js";
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
@@ -77,6 +77,32 @@ export async function adminRoutes(app: FastifyInstance) {
       try {
         const admin = await createSubAdmin(email, password);
         return reply.code(201).send({ admin });
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    },
+  );
+
+  app.delete(
+    "/admin/admins/:id",
+    {
+      preHandler: [requireAdmin, requireOwnerAdmin],
+      schema: {
+        tags: ["admin"],
+        summary: "Owner only: delete an admin account",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string", format: "uuid" } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      try {
+        await deleteAdmin(id, req.adminId!);
+        return reply.send({ ok: true });
       } catch (err) {
         return reply.code(400).send({ error: (err as Error).message });
       }

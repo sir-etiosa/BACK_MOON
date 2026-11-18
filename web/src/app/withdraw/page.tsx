@@ -41,6 +41,8 @@ export default function WithdrawPage() {
       .finally(hide);
   }, [router, show, hide]);
 
+  // NGN (XCH) isn't an on-chain asset — no withdrawal address makes sense for it.
+  const withdrawableBalances = (balances ?? []).filter((b) => b.symbol !== "XCH");
   const asset = balances?.find((b) => b.id === assetId);
 
   async function handleWithdraw(e: React.FormEvent) {
@@ -101,11 +103,11 @@ export default function WithdrawPage() {
                 <Select value={assetId} onValueChange={(v) => setAssetId(v ?? "")}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select asset">
-                      {(value: string | null) => balances.find((b) => b.id === value)?.symbol ?? "Select asset"}
+                      {(value: string | null) => withdrawableBalances.find((b) => b.id === value)?.symbol ?? "Select asset"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {balances.map((b) => (
+                    {withdrawableBalances.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.symbol} ({fromSmallestUnits(b.balance, b.decimals)} available)
                       </SelectItem>

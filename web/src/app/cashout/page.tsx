@@ -22,6 +22,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
+import { displaySymbol } from "@/lib/display-symbol";
 import { useLoading } from "@/components/loading-overlay";
 import { cn, capitalizeWords } from "@/lib/utils";
 
@@ -154,7 +155,10 @@ export default function CashoutPage() {
 
   function assetAmountNeeded(asset: Balance, ngn: string): number | null {
     const ngnNum = Number(ngn);
-    if (!ngnRate || !Number.isFinite(ngnNum) || ngnNum <= 0) return null;
+    if (!Number.isFinite(ngnNum) || ngnNum <= 0) return null;
+    // NGN (XCH) is pegged 1:1 to naira by definition — no rate lookup needed at all.
+    if (asset.symbol === "XCH") return ngnNum;
+    if (!ngnRate) return null;
     const usdNeeded = ngnNum / ngnRate;
     if (asset.symbol === "USDC") return usdNeeded;
     const availableWhole = Number(fromSmallestUnits(asset.balance, asset.decimals));
@@ -207,9 +211,46 @@ export default function CashoutPage() {
             <div className="flex flex-col gap-1">
               <h2 className="text-lg font-semibold">Cash-out requested</h2>
               <p className="text-muted-foreground text-sm">
-                ₦{Number(submittedRequest.ngnAmount).toLocaleString()} is on its way to {submittedRequest.bankName} ••••{" "}
-                {submittedRequest.accountNumber.slice(-4)}. We&rsquo;ll notify you once it&rsquo;s paid out.
+                ₦{Number(submittedRequest.payoutNgnAmount ?? submittedRequest.ngnAmount).toLocaleString()} is on its way to{" "}
+                {submittedRequest.bankName} ••••{submittedRequest.accountNumber.slice(-4)}. We&rsquo;ll notify you once
+                it&rsquo;s paid out.
               </p>
+            </div>
+            <div className="bg-muted/50 mt-1 flex w-full flex-col gap-1.5 rounded-xl p-3 text-left text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">You cash out</span>
+                <span>₦{Number(submittedRequest.ngnAmount).toLocaleString()}</span>
+              </div>
+              {submittedRequest.whtTokenAmount !== "0" && selectedAsset && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">WHT withheld</span>
+                  <span>
+                    {fromSmallestUnits(submittedRequest.whtTokenAmount, selectedAsset.decimals)} {displaySymbol(selectedAsset.symbol)}
+                  </span>
+                </div>
+              )}
+              {submittedRequest.feeNgnAmount !== "0" && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fee</span>
+                  <span>₦{Number(submittedRequest.feeNgnAmount).toLocaleString()}</span>
+                </div>
+              )}
+              {submittedRequest.vatNgnAmount !== "0" && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">VAT</span>
+                  <span>₦{Number(submittedRequest.vatNgnAmount).toLocaleString()}</span>
+                </div>
+              )}
+              {submittedRequest.stampNgnAmount !== "0" && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Stamp duty</span>
+                  <span>₦{Number(submittedRequest.stampNgnAmount).toLocaleString()}</span>
+                </div>
+              )}
+              <div className="border-border mt-1 flex justify-between border-t pt-1.5 font-semibold">
+                <span>Paid to bank</span>
+                <span>₦{Number(submittedRequest.payoutNgnAmount ?? submittedRequest.ngnAmount).toLocaleString()}</span>
+              </div>
             </div>
             <Button className="mt-2 h-11 w-full font-semibold" onClick={() => router.push("/dashboard")}>
               Back to dashboard
@@ -280,13 +321,16 @@ export default function CashoutPage() {
                   <Select value={assetId} onValueChange={(v) => setAssetId(v ?? "")}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select asset">
-                        {(value: string | null) => balances.find((b) => b.id === value)?.symbol ?? "Select asset"}
+                        {(value: string | null) => {
+                          const b = balances.find((b) => b.id === value);
+                          return b ? displaySymbol(b.symbol) : "Select asset";
+                        }}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {balances.map((b) => (
                         <SelectItem key={b.id} value={b.id}>
-                          {b.symbol} ({fromSmallestUnits(b.balance, b.decimals)} available)
+                          {displaySymbol(b.symbol)} ({fromSmallestUnits(b.balance, b.decimals)} available)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -303,11 +347,15 @@ export default function CashoutPage() {
                     onChange={(e) => setNgnAmount(e.target.value)}
                     required
                   />
-                  {selectedAsset && neededAssetAmount !== null && (
+                  {selectedAsset && selectedAsset.symbol !== "XCH" && neededAssetAmount !== null && (
                     <p className={cn("text-xs", insufficientBalance ? "text-destructive" : "text-muted-foreground")}>
-                      ≈ {neededAssetAmount.toFixed(8).replace(/0+$/, "").replace(/\.$/, "")} {selectedAsset.symbol}
+                      ≈ {neededAssetAmount.toFixed(8).replace(/0+$/, "").replace(/\.$/, "")} {displaySymbol(selectedAsset.symbol)} (rough
+                      estimate, before tax/fee — see the exact breakdown after you submit)
                       {insufficientBalance ? " — more than you have available" : ""}
                     </p>
+                  )}
+                  {selectedAsset?.symbol === "XCH" && insufficientBalance && (
+                    <p className="text-destructive text-xs">More than you have available</p>
                   )}
                 </div>
 

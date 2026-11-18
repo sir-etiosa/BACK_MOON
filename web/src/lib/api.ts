@@ -152,13 +152,34 @@ export interface CashoutRequest {
   id: string;
   sourceAssetId: string;
   sourceAmount: string;
-  usdcAssetId: string;
-  usdcAmount: string;
+  usdcAssetId: string | null;
+  usdcAmount: string | null;
   ngnRate: string;
+  /** Gross NGN-equivalent value of the crypto cashed out, before tax/fee deductions. */
   ngnAmount: string;
+  whtTokenAmount: string;
+  feeNgnAmount: string;
+  vatNgnAmount: string;
+  stampNgnAmount: string;
+  /** What actually lands in the bank, after WHT/fee/VAT/stamp duty. */
+  payoutNgnAmount: string | null;
   accountName: string;
   bankName: string;
   accountNumber: string;
+  status: "PENDING" | "PAID" | "REJECTED";
+  requestedAt: string;
+}
+
+export interface BillPaymentRequest {
+  id: string;
+  assetId: string;
+  soldTokenAmount: string;
+  whtTokenAmount: string;
+  feeNgnAmount: string;
+  vatNgnAmount: string;
+  billAmountNgn: string;
+  billerCategory: string;
+  billerRef: string | null;
   status: "PENDING" | "PAID" | "REJECTED";
   requestedAt: string;
 }
@@ -193,7 +214,11 @@ export const api = {
   getBalances: () => request<{ balances: Balance[]; ngnRate: number | null }>("/wallet/balances"),
   getDeposits: () => request<{ deposits: Deposit[] }>("/wallet/deposits"),
   swap: (fromSymbol: string, amountFrom: string, assetToId: string) =>
-    request<{ trade: unknown; amountTo: string }>("/trade/swap", {
+    request<{
+      trade: unknown;
+      amountTo: string;
+      tax?: { whtToken: string; feeToken: string; vatToken: string; netToken: string };
+    }>("/trade/swap", {
       method: "POST",
       body: JSON.stringify({ fromSymbol, amountFrom, assetToId }),
     }),
@@ -239,4 +264,10 @@ export const api = {
       body: JSON.stringify({ sourceAssetId, ngnAmount, bankAccountId }),
     }),
   getCashoutRequests: () => request<{ requests: CashoutRequest[] }>("/cashout/requests"),
+  createBillRequest: (billAmountNgn: string, assetSymbol: string, billerCategory: string, billerRef?: string) =>
+    request<{ request: BillPaymentRequest }>("/bills/request", {
+      method: "POST",
+      body: JSON.stringify({ billAmountNgn, assetSymbol, billerCategory, billerRef }),
+    }),
+  getBillRequests: () => request<{ requests: BillPaymentRequest[] }>("/bills/requests"),
 };

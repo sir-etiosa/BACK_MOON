@@ -39,11 +39,14 @@ export default function SwapPage() {
       .finally(hide);
   }, [router, show, hide]);
 
+  // NGN (XCH) isn't swappable yet — excluded from both sides.
+  const swappableBalances = (balances ?? []).filter((b) => b.symbol !== "XCH");
+
   // "From" is combined across chains — one symbol, one spendable total. "To" stays per-chain
   // since that's choosing exactly where the new funds land.
   const fromGroups = (() => {
     const map = new Map<string, { symbol: string; decimals: number; balance: string }>();
-    for (const b of balances ?? []) {
+    for (const b of swappableBalances) {
       const existing = map.get(b.symbol);
       if (!existing) map.set(b.symbol, { symbol: b.symbol, decimals: b.decimals, balance: b.balance });
       else existing.balance = (BigInt(existing.balance) + BigInt(b.balance)).toString();
@@ -51,10 +54,10 @@ export default function SwapPage() {
     return [...map.values()];
   })();
   const fromGroup = fromGroups.find((g) => g.symbol === fromSymbol);
-  const toAsset = balances?.find((b) => b.id === toId);
+  const toAsset = swappableBalances.find((b) => b.id === toId);
 
   const symbolCounts = new Map<string, number>();
-  for (const b of balances ?? []) symbolCounts.set(b.symbol, (symbolCounts.get(b.symbol) ?? 0) + 1);
+  for (const b of swappableBalances) symbolCounts.set(b.symbol, (symbolCounts.get(b.symbol) ?? 0) + 1);
   function displayLabel(b: Balance): string {
     return (symbolCounts.get(b.symbol) ?? 0) > 1 ? `${b.symbol} · ${networkLabel(b.symbol, b.chain)}` : b.symbol;
   }
@@ -67,8 +70,21 @@ export default function SwapPage() {
     setLoading(true);
     try {
       const smallest = toSmallestUnits(amount, fromGroup.decimals);
-      const { amountTo } = await api.swap(fromSymbol, smallest, toId);
-      setSuccess(`Swapped ${amount} ${fromGroup.symbol} for ${fromSmallestUnits(amountTo, toAsset.decimals)} ${toAsset.symbol}`);
+      const { amountTo, tax } = await api.swap(fromSymbol, smallest, toId);
+      const received = `${fromSmallestUnits(amountTo, toAsset.decimals)} ${toAsset.symbol}`;
+      const whtWhole = tax && tax.whtToken !== "0" ? fromSmallestUnits(tax.whtToken, fromGroup.decimals) : null;
+      const feeWhole = tax && tax.feeToken !== "0" ? fromSmallestUnits(tax.feeToken, fromGroup.decimals) : null;
+      const vatWhole = tax && tax.vatToken !== "0" ? fromSmallestUnits(tax.vatToken, fromGroup.decimals) : null;
+      const deductions = [
+        whtWhole && `${whtWhole} ${fromGroup.symbol} WHT`,
+        feeWhole && `${feeWhole} ${fromGroup.symbol} fee`,
+        vatWhole && `${vatWhole} ${fromGroup.symbol} VAT`,
+      ].filter(Boolean);
+      setSuccess(
+        deductions.length > 0
+          ? `Swapped ${amount} ${fromGroup.symbol} for ${received} (${deductions.join(" + ")} withheld)`
+          : `Swapped ${amount} ${fromGroup.symbol} for ${received}`,
+      );
       setAmount("");
       const refreshed = await api.getBalances();
       setBalances(refreshed.balances);
@@ -137,13 +153,13 @@ export default function SwapPage() {
                 <SelectTrigger className="h-11 w-full">
                   <SelectValue placeholder="Select asset">
                     {(value: string | null) => {
-                      const b = balances.find((b) => b.id === value);
+                      const b = swappableBalances.find((b) => b.id === value);
                       return b ? displayLabel(b) : "Select asset";
                     }}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {balances.map((b) => (
+                  {swappableBalances.map((b) => (
                     <SelectItem key={b.id} value={b.id} disabled={b.symbol === fromSymbol}>
                       {displayLabel(b)}
                     </SelectItem>

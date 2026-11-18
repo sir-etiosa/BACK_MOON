@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 import { depositCreditedEmail } from "../../email/templates.js";
-import { applyLedgerMovement, TX_OPTIONS } from "../../ledger/ledger.service.js";
+import { applyLedgerTransfer, getSystemAccountId, getUserAssetAccountId, TX_OPTIONS } from "../../ledger/ledger.service.js";
 import { mailer } from "../../modules/auth/mailer.js";
 
 interface ObservedDeposit {
@@ -23,6 +23,9 @@ interface ObservedDeposit {
  */
 export async function recordAndCreditIfReady(input: ObservedDeposit) {
   let justCredited = false;
+
+  const externalAccountId = await getSystemAccountId("EXTERNAL", input.assetId);
+  const userAccountId = await getUserAssetAccountId(input.userId, input.assetId);
 
   const deposit = await prisma.$transaction(async (tx) => {
     const existing = await tx.deposit.findUnique({
@@ -49,10 +52,10 @@ export async function recordAndCreditIfReady(input: ObservedDeposit) {
     if (d.status === "CREDITED") return d;
     if (input.confirmations < input.requiredConfirmations) return d;
 
-    await applyLedgerMovement(tx, {
-      userId: input.userId,
+    await applyLedgerTransfer(tx, {
+      fromAccountId: externalAccountId,
+      toAccountId: userAccountId,
       assetId: input.assetId,
-      direction: "CREDIT",
       amount: input.amount,
       refType: "DEPOSIT",
       refId: d.id,

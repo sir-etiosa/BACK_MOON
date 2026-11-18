@@ -1,10 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/require-auth.js";
-import { swapSymbolAgainstHouse } from "./trade.service.js";
-import { computeSwapQuote } from "./price-feed.service.js";
-import { prisma } from "../../db/prisma.js";
-import { getBalance, InsufficientBalanceError } from "../../ledger/ledger.service.js";
+import { executeTaxedSwap } from "../tax/swap.service.js";
+import { InsufficientBalanceError } from "../../ledger/ledger.service.js";
 
 const swapSchema = z.object({
   fromSymbol: z.string().min(1),
@@ -19,7 +17,7 @@ export async function tradeRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         tags: ["trade"],
-        summary: "Swap a symbol (combined across any chains it's held on) for an asset against house inventory",
+        summary: "Swap a symbol (combined across any chains it's held on) for an asset against treasury inventory — withholds WHT/fee/VAT per the active tax rules",
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",
@@ -35,51 +33,23 @@ export async function tradeRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const body = swapSchema.parse(req.body);
 
-      const [fromVariants, assetTo] = await Promise.all([
-        prisma.asset.findMany({ where: { symbol: body.fromSymbol, isActive: true } }),
-        prisma.asset.findUniqueOrThrow({ where: { id: body.assetToId } }),
-      ]);
-      if (fromVariants.length === 0) {
-        return reply.code(400).send({ error: `Unknown asset ${body.fromSymbol}` });
-      }
-
-      // Drain the largest balance first so a small source doesn't dust out before it's needed.
-      const withBalances = await Promise.all(
-        fromVariants.map(async (asset) => ({ asset, balance: await getBalance(req.userId!, asset.id) })),
-      );
-      withBalances.sort((a, b) => (b.balance.gt(a.balance) ? 1 : b.balance.lt(a.balance) ? -1 : 0));
-
-      let remaining = BigInt(body.amountFrom);
-      const legs: { assetId: string; amount: string }[] = [];
-      for (const { asset, balance } of withBalances) {
-        if (remaining <= 0n) break;
-        const available = BigInt(balance.toFixed(0));
-        if (available <= 0n) continue;
-        const take = available < remaining ? available : remaining;
-        legs.push({ assetId: asset.id, amount: take.toString() });
-        remaining -= take;
-      }
-
-      if (remaining > 0n) {
-        return reply.code(400).send({ error: "Insufficient balance for this swap" });
-      }
-
-      // All chain-variants of a symbol share the same decimals — safe to quote once for the total.
-      const amountTo = await computeSwapQuote(
-        { symbol: body.fromSymbol, decimals: fromVariants[0].decimals },
-        assetTo,
-        body.amountFrom,
-      );
-
       try {
-        const trade = await swapSymbolAgainstHouse({
+        const { trade, breakdown } = await executeTaxedSwap({
           userId: req.userId!,
-          legs,
-          amountFromTotal: body.amountFrom,
+          fromSymbol: body.fromSymbol,
+          amountFrom: body.amountFrom,
           assetToId: body.assetToId,
-          amountTo: amountTo.toString(),
         });
-        return reply.send({ trade, amountTo: amountTo.toString() });
+        return reply.send({
+          trade,
+          amountTo: breakdown.proceeds.toString(),
+          tax: {
+            whtToken: breakdown.whtToken.toString(),
+            feeToken: breakdown.feeToken.toString(),
+            vatToken: breakdown.vatToken.toString(),
+            netToken: breakdown.netToken.toString(),
+          },
+        });
       } catch (err) {
         if (err instanceof InsufficientBalanceError) {
           return reply.code(400).send({ error: "Insufficient balance for this swap" });

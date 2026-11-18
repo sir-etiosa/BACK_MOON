@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma.js";
-import { credit } from "../ledger/ledger.service.js";
+import { applyLedgerTransfer, getSystemAccountId, getUserAssetAccountId, TX_OPTIONS } from "../ledger/ledger.service.js";
 
 // Dev-only helper to credit a user's ledger balance before chain watchers exist.
 // Usage: npm run dev-credit -- user@example.com BTC 500000
@@ -11,13 +11,21 @@ async function main() {
   const user = await prisma.user.findUniqueOrThrow({ where: { email: email.toLowerCase() } });
   const asset = await prisma.asset.findFirstOrThrow({ where: { symbol } });
 
-  await credit({
-    userId: user.id,
-    assetId: asset.id,
-    amount,
-    refType: "ADJUSTMENT",
-    refId: `dev-credit-${Date.now()}`,
-  });
+  const userAccountId = await getUserAssetAccountId(user.id, asset.id);
+  const externalAccountId = await getSystemAccountId("EXTERNAL", asset.id);
+
+  await prisma.$transaction(
+    (tx) =>
+      applyLedgerTransfer(tx, {
+        fromAccountId: externalAccountId,
+        toAccountId: userAccountId,
+        assetId: asset.id,
+        amount,
+        refType: "ADJUSTMENT",
+        refId: `dev-credit-${Date.now()}`,
+      }),
+    TX_OPTIONS,
+  );
   console.log(`Credited ${amount} (smallest units) of ${symbol} to ${email}`);
 }
 

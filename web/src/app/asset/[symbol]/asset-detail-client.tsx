@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, type Deposit, type Withdrawal } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
+import { displaySymbol } from "@/lib/display-symbol";
 import { networksForSymbol, type AssetNetwork } from "@/lib/asset-networks";
 import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
@@ -77,7 +78,7 @@ export default function AssetDetailClient() {
     );
   }
 
-  const isFiat = symbol === "NGN" || variants[0]?.chain === "fiat";
+  const isFiat = symbol === "XCH" || variants[0]?.chain === "fiat";
   const networks = networksForSymbol(symbol, variants[0]?.chain ?? symbol.toLowerCase());
   const hasMultipleNetworks = !isFiat && networks.length > 1 && variants.length > 0;
 
@@ -128,7 +129,7 @@ export default function AssetDetailClient() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">{symbol}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{displaySymbol(symbol)}</h1>
         <div data-numeric className="flex items-baseline gap-2">
           <span className="font-mono text-xl font-semibold">{fromSmallestUnits(totalBalance, decimals)}</span>
           {totalUsd > 0 && <span className="text-muted-foreground font-mono text-sm">${totalUsd.toFixed(2)}</span>}

@@ -5,6 +5,9 @@
 *.pem
 *.key
 
+# XCH token / web3 work-in-progress — not part of the deployed app yet
+/xch/
+
 # Dependencies
 node_modules/
 

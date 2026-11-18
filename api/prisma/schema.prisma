@@ -87,6 +87,12 @@ model User {
   cashoutProfile      CashoutProfile?
   cashoutRequests     CashoutRequest[]
   cashoutBankAccounts CashoutBankAccount[]
+  ledgerAccounts      LedgerAccount[]
+  taxQuotes           TaxQuote[]
+  taxTransactions     TaxTransaction[]
+  taxEvents           TaxEvent[]
+  acquisitionLots     AcquisitionLot[]
+  billPaymentRequests BillPaymentRequest[]
 
   @@map("users")
 }
@@ -171,13 +177,19 @@ model AddressPool {
   @@map("address_pool")
 }
 
+enum AssetCategory {
+  NON_STABLE
+  STABLECOIN
+}
+
 model Asset {
-  id              String  @id @default(uuid())
+  id              String        @id @default(uuid())
   symbol          String
   chain           String
   decimals        Int
-  contractAddress String? @map("contract_address")
-  isActive        Boolean @default(true) @map("is_active")
+  contractAddress String?       @map("contract_address")
+  isActive        Boolean       @default(true) @map("is_active")
+  category        AssetCategory @default(NON_STABLE)
 
   balances              Balance[]
   ledgerEntries         LedgerEntry[]
@@ -185,6 +197,14 @@ model Asset {
   withdrawals           Withdrawal[]
   cashoutRequestsSource CashoutRequest[] @relation("CashoutRequestSourceAsset")
   cashoutRequestsUsdc   CashoutRequest[] @relation("CashoutRequestUsdcAsset")
+  ledgerAccounts        LedgerAccount[]
+  postings              Posting[]
+  priceSnapshots        PriceSnapshot[]
+  acquisitionLots       AcquisitionLot[]
+  taxWallets            TaxWallet[]
+  taxSweeps             TaxSweep[]
+  taxRemittances        TaxRemittance[]
+  billPaymentRequests   BillPaymentRequest[]
 
   @@unique([symbol, chain])
   @@map("assets")
@@ -350,11 +370,24 @@ model CashoutRequest {
   sourceAsset      Asset                @relation("CashoutRequestSourceAsset", fields: [sourceAssetId], references: [id])
   sourceAmount     Decimal              @map("source_amount") @db.Decimal(38, 0)
   tradeId          String?              @map("trade_id")
-  usdcAssetId      String               @map("usdc_asset_id")
-  usdcAsset        Asset                @relation("CashoutRequestUsdcAsset", fields: [usdcAssetId], references: [id])
-  usdcAmount       Decimal              @map("usdc_amount") @db.Decimal(38, 0)
+  // usdcAssetId/usdcAmount are vestigial from the pre-tax-engine flow (every non-USDC
+  // cashout used to be swapped to USDC before holding). The tax engine settles directly
+  // in the source asset instead — see modules/tax/cashout.service.ts — so these are now
+  // nullable and only populated for historical rows.
+  usdcAssetId      String?              @map("usdc_asset_id")
+  usdcAsset        Asset?               @relation("CashoutRequestUsdcAsset", fields: [usdcAssetId], references: [id])
+  usdcAmount       Decimal?             @map("usdc_amount") @db.Decimal(38, 0)
   ngnRate          Decimal              @map("ngn_rate") @db.Decimal(18, 4)
+  // Gross NGN-equivalent value of the crypto being cashed out (pre-tax) — unchanged
+  // meaning from before the tax engine. What actually lands in the bank is the smaller
+  // `payoutNgnAmount` below, once WHT/fee/VAT/stamp duty are deducted.
   ngnAmount        Decimal              @map("ngn_amount") @db.Decimal(18, 2)
+  whtTokenAmount   Decimal              @default(0) @map("wht_token_amount") @db.Decimal(38, 0)
+  feeNgnAmount     Decimal              @default(0) @map("fee_ngn_amount") @db.Decimal(18, 2)
+  vatNgnAmount     Decimal              @default(0) @map("vat_ngn_amount") @db.Decimal(18, 2)
+  stampNgnAmount   Decimal              @default(0) @map("stamp_ngn_amount") @db.Decimal(18, 2)
+  payoutNgnAmount  Decimal?             @map("payout_ngn_amount") @db.Decimal(18, 2)
+  taxTransactionId String?              @map("tax_transaction_id")
   accountName      String               @map("account_name")
   bankName         String               @map("bank_name")
   accountNumber    String               @map("account_number")
@@ -387,4 +420,434 @@ model SupportTicketMessage {
 
   @@index([ticketId, createdAt])
   @@map("support_ticket_messages")
+}
+
+// =====================================================================================
+// Tax compliance module (NRS Circular 2026/21). See api/src/modules/tax/README.md.
+// Chart-of-accounts ledger below is the new source of truth for money movement, built
+// alongside the legacy Balance/LedgerEntry tables above — those are frozen (no new
+// writes) and kept for one release as a rollback/audit safety net, then dropped.
+// =====================================================================================
+
+enum LedgerAccountType {
+  USER_ASSET
+  TREASURY
+  HOT_WALLET
+  TAX_WALLET
+  REVENUE_FEES
+  TAX_WHT
+  TAX_VAT
+  TAX_STAMP
+  PAYOUT_CLEARING
+  BILLS_CLEARING
+  BANK_PAYOUT
+  BILLER_SETTLEMENT
+  NRS_REMITTED
+  EXTERNAL
+}
+
+enum TaxType {
+  WHT
+  VAT
+  STAMP
+}
+
+enum PostingRefType {
+  DEPOSIT
+  WITHDRAWAL
+  SWAP
+  CASHOUT
+  BILL_PAYMENT
+  TAX_WHT
+  TAX_VAT
+  TAX_STAMP
+  FEE
+  SWEEP
+  REMITTANCE
+  REVERSAL
+  ADJUSTMENT
+}
+
+// One row per account in the chart of accounts. Every account is asset-scoped —
+// NGN is itself an `Asset` row (chain "fiat"), reused here rather than inventing a
+// separate currency concept. `code` is the human-readable label from the brief
+// (e.g. "user:<userId>:<assetId>", "tax:WHT:<assetId>", "treasury:<assetId>").
+model LedgerAccount {
+  id            String            @id @default(uuid())
+  code          String            @unique
+  type          LedgerAccountType
+  assetId       String            @map("asset_id")
+  asset         Asset             @relation(fields: [assetId], references: [id])
+  userId        String?           @map("user_id")
+  user          User?             @relation(fields: [userId], references: [id])
+  taxType       TaxType?          @map("tax_type")
+  // Suspense/contra/clearing accounts (EXTERNAL, REVENUE_FEES, TAX_*, *_CLEARING,
+  // BANK_PAYOUT, BILLER_SETTLEMENT, NRS_REMITTED) represent money in flight or owed,
+  // not custodied value — they're allowed to carry a working balance in either
+  // direction. USER_ASSET/TREASURY/HOT_WALLET/TAX_WALLET never go negative.
+  allowNegative Boolean           @default(false) @map("allow_negative")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  balance      LedgerAccountBalance?
+  entries      LedgerAccountEntry[]
+  postingsFrom Posting[]            @relation("PostingFromAccount")
+  postingsTo   Posting[]            @relation("PostingToAccount")
+
+  @@unique([type, assetId, userId, taxType], name: "account_identity")
+  @@index([userId, assetId])
+  @@map("ledger_accounts")
+}
+
+// Materialized balance per account — locked via `SELECT ... FOR UPDATE` by the
+// ledger primitives, same discipline as the legacy `balances` table.
+model LedgerAccountBalance {
+  ledgerAccountId String        @id @map("ledger_account_id")
+  account         LedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  balance         Decimal       @default(0) @db.Decimal(38, 0)
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@map("ledger_account_balances")
+}
+
+// Append-only CREDIT/DEBIT rows, one pair per `Posting` — the generalized
+// replacement for the legacy `LedgerEntry`, keyed by account instead of
+// (userId, assetId).
+model LedgerAccountEntry {
+  id              String          @id @default(uuid())
+  ledgerAccountId String          @map("ledger_account_id")
+  account         LedgerAccount   @relation(fields: [ledgerAccountId], references: [id])
+  direction       LedgerDirection
+  amount          Decimal         @db.Decimal(38, 0)
+  refType         PostingRefType  @map("ref_type")
+  refId           String          @map("ref_id")
+  balanceAfter    Decimal         @map("balance_after") @db.Decimal(38, 0)
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@unique([refType, refId, ledgerAccountId, direction], name: "ledger_account_entry_dedupe")
+  @@index([ledgerAccountId])
+  @@index([refType, refId])
+  @@map("ledger_account_entries")
+}
+
+// Append-only, human-readable double-entry view: one row moves `amount` of one
+// asset from one account to another. Written alongside the paired
+// `LedgerAccountEntry` rows in the same DB transaction — never updated or deleted.
+model Posting {
+  id            String          @id @default(uuid())
+  transactionId String?         @map("transaction_id")
+  transaction   TaxTransaction? @relation(fields: [transactionId], references: [id])
+  legIndex      Int             @map("leg_index")
+  fromAccountId String          @map("from_account_id")
+  fromAccount   LedgerAccount   @relation("PostingFromAccount", fields: [fromAccountId], references: [id])
+  toAccountId   String          @map("to_account_id")
+  toAccount     LedgerAccount   @relation("PostingToAccount", fields: [toAccountId], references: [id])
+  assetId       String          @map("asset_id")
+  asset         Asset           @relation(fields: [assetId], references: [id])
+  amount        Decimal         @db.Decimal(38, 0)
+  refType       PostingRefType  @map("ref_type")
+  refId         String          @map("ref_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@unique([transactionId, legIndex])
+  @@index([fromAccountId, assetId])
+  @@index([toAccountId, assetId])
+  @@map("postings")
+}
+
+enum TaxEventType {
+  SWAP
+  CASHOUT
+  BILL_PAYMENT
+}
+
+enum RuleBase {
+  GROSS
+  FEE
+  PER_TXN
+}
+
+enum CollectIn {
+  SOURCE_TOKEN
+  FEE_CURRENCY
+  NGN
+}
+
+// Versioned, never edited in place — a rule change is always a new version row
+// plus closing the old one's `effectiveTo`. Every tax calculation records which
+// rule version(s) it used.
+model TaxRule {
+  id                  String         @id @default(uuid())
+  version             Int
+  taxType             TaxType        @map("tax_type")
+  eventType           TaxEventType   @map("event_type")
+  assetCategory       AssetCategory? @map("asset_category")
+  rateBps             Int?           @map("rate_bps")
+  flatAmountMinor     Decimal?       @map("flat_amount_minor") @db.Decimal(38, 0)
+  flatCurrencyAssetId String?        @map("flat_currency_asset_id")
+  base                RuleBase
+  collectIn           CollectIn      @map("collect_in")
+  // OPEN item: possible NGN10,000 stamp-duty threshold (PwC's position) — plumbed,
+  // unset by default. Do not guess a value; a tax practitioner must confirm first.
+  thresholdMinor      Decimal?       @map("threshold_minor") @db.Decimal(38, 0)
+  effectiveFrom       DateTime       @map("effective_from")
+  effectiveTo         DateTime?      @map("effective_to")
+  createdByAdminId    String         @map("created_by_admin_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+
+  @@index([taxType, eventType, assetCategory, effectiveFrom])
+  @@map("tax_rules")
+}
+
+enum FeeChargeType {
+  PERCENT
+  FLAT
+}
+
+model FeeRule {
+  id               String        @id @default(uuid())
+  version          Int
+  eventType        TaxEventType  @map("event_type")
+  assetId          String?       @map("asset_id")
+  type             FeeChargeType
+  rateBps          Int?          @map("rate_bps")
+  flatAmountMinor  Decimal?      @map("flat_amount_minor") @db.Decimal(38, 0)
+  chargeIn         CollectIn     @map("charge_in")
+  base             RuleBase
+  effectiveFrom    DateTime      @map("effective_from")
+  effectiveTo      DateTime?     @map("effective_to")
+  createdByAdminId String        @map("created_by_admin_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  @@index([eventType, assetId, effectiveFrom])
+  @@map("fee_rules")
+}
+
+// One snapshot per quote: USD price of the token + USD/NGN rate, each tagged with
+// its own source so either can be swapped out without a schema change (e.g. once
+// the NRS publishes an approved aggregator list).
+model PriceSnapshot {
+  id         String   @id @default(uuid())
+  assetId    String   @map("asset_id")
+  asset      Asset    @relation(fields: [assetId], references: [id])
+  // 20 fractional digits, not 8: XCH's fixed 1:1 naira peg is stored here as 1/usdNgnRate
+  // (a repeating decimal), and 8dp wasn't enough precision to round-trip back to exactly
+  // 1 when multiplied by usdNgnRate — it silently under-charged by a couple of kobo.
+  usdPrice   Decimal  @map("usd_price") @db.Decimal(40, 20)
+  usdNgnRate Decimal  @map("usd_ngn_rate") @db.Decimal(18, 4)
+  source     String
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  @@index([assetId, capturedAt])
+  @@map("price_snapshots")
+}
+
+enum TaxQuoteStatus {
+  OPEN
+  EXPIRED
+  CONSUMED
+}
+
+model TaxQuote {
+  id               String         @id @default(uuid())
+  userId           String         @map("user_id")
+  user             User           @relation(fields: [userId], references: [id])
+  eventType        TaxEventType   @map("event_type")
+  inputsJson       Json           @map("inputs_json")
+  breakdownJson    Json           @map("breakdown_json")
+  ruleVersionsJson Json           @map("rule_versions_json")
+  priceSnapshotId  String         @map("price_snapshot_id")
+  status           TaxQuoteStatus @default(OPEN)
+  expiresAt        DateTime       @map("expires_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  transaction TaxTransaction?
+
+  @@index([userId, status])
+  @@map("tax_quotes")
+}
+
+enum TaxTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model TaxTransaction {
+  id                      String                @id @default(uuid())
+  // Nullable: a reversal transaction isn't backed by a new user-initiated quote.
+  quoteId                 String?               @unique @map("quote_id")
+  quote                   TaxQuote?             @relation(fields: [quoteId], references: [id])
+  userId                  String                @map("user_id")
+  user                    User                  @relation(fields: [userId], references: [id])
+  eventType               TaxEventType          @map("event_type")
+  status                  TaxTransactionStatus  @default(PENDING)
+  idempotencyKey          String                @unique @map("idempotency_key")
+  externalRef             String?               @map("external_ref")
+  reversedByTransactionId String?               @map("reversed_by_transaction_id")
+  createdAt               DateTime              @default(now()) @map("created_at")
+
+  postings  Posting[]
+  taxEvents TaxEvent[]
+
+  @@map("tax_transactions")
+}
+
+// Per-disposal compliance record — never hard-deleted (6yr+ retention, soft-delete
+// via `deletedAt` only). `assetSymbol` not `assetId`: a swap's "from" side can be
+// drained across multiple chain-variant assets of one symbol.
+model TaxEvent {
+  id                 String         @id @default(uuid())
+  transactionId      String         @map("transaction_id")
+  transaction        TaxTransaction @relation(fields: [transactionId], references: [id])
+  userId             String         @map("user_id")
+  user               User           @relation(fields: [userId], references: [id])
+  assetSymbol        String         @map("asset_symbol")
+  quantityMinor      Decimal        @map("quantity_minor") @db.Decimal(38, 0)
+  grossUsdValue      Decimal        @map("gross_usd_value") @db.Decimal(24, 8)
+  priceSnapshotId    String         @map("price_snapshot_id")
+  whtTokenMinor      Decimal        @default(0) @map("wht_token_minor") @db.Decimal(38, 0)
+  whtNgnValueKobo    Decimal        @default(0) @map("wht_ngn_value_kobo") @db.Decimal(38, 0)
+  feeAmountMinor     Decimal        @default(0) @map("fee_amount_minor") @db.Decimal(38, 0)
+  feeCurrencyAssetId String?        @map("fee_currency_asset_id")
+  vatAmountMinor     Decimal        @default(0) @map("vat_amount_minor") @db.Decimal(38, 0)
+  vatCurrencyAssetId String?        @map("vat_currency_asset_id")
+  stampAmountKobo    Decimal        @default(0) @map("stamp_amount_kobo") @db.Decimal(38, 0)
+  ruleVersionsJson   Json           @map("rule_versions_json")
+  counterpartyRef    String?        @map("counterparty_ref")
+  deletedAt          DateTime?      @map("deleted_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("tax_events")
+}
+
+// Cost-basis lot for an asset received in a swap (v1 scope — not written for plain
+// deposits; see plan notes). Groundwork for a future FIFO statement.
+model AcquisitionLot {
+  id                  String    @id @default(uuid())
+  userId              String    @map("user_id")
+  user                User      @relation(fields: [userId], references: [id])
+  assetId             String    @map("asset_id")
+  asset               Asset     @relation(fields: [assetId], references: [id])
+  quantityMinor       Decimal   @map("quantity_minor") @db.Decimal(38, 0)
+  usdCostBase         Decimal   @map("usd_cost_base") @db.Decimal(24, 8)
+  acquiredAt          DateTime  @map("acquired_at")
+  sourceTransactionId String    @map("source_transaction_id")
+  deletedAt           DateTime? @map("deleted_at")
+
+  @@index([userId, assetId, acquiredAt])
+  @@map("acquisition_lots")
+}
+
+model TaxWallet {
+  id               String   @id @default(uuid())
+  assetId          String   @map("asset_id")
+  asset            Asset    @relation(fields: [assetId], references: [id])
+  addressOrAccount String   @map("address_or_account")
+  custodyProvider  String   @map("custody_provider")
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("tax_wallets")
+}
+
+enum SweepStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model TaxSweep {
+  id                String      @id @default(uuid())
+  taxType           TaxType     @map("tax_type")
+  assetId           String      @map("asset_id")
+  asset             Asset       @relation(fields: [assetId], references: [id])
+  amountMinor       Decimal     @map("amount_minor") @db.Decimal(38, 0)
+  txHashOrRef       String?     @map("tx_hash_or_ref")
+  coveredPostingIds Json        @map("covered_posting_ids")
+  status            SweepStatus @default(PENDING)
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  @@index([taxType, assetId, status])
+  @@map("tax_sweeps")
+}
+
+enum RemittanceStatus {
+  PENDING
+  PAID
+}
+
+model TaxRemittance {
+  id               String           @id @default(uuid())
+  taxType          TaxType          @map("tax_type")
+  assetId          String           @map("asset_id")
+  asset            Asset            @relation(fields: [assetId], references: [id])
+  amountMinor      Decimal          @map("amount_minor") @db.Decimal(38, 0)
+  periodStart      DateTime         @map("period_start")
+  periodEnd        DateTime         @map("period_end")
+  txHashOrRef      String?          @map("tx_hash_or_ref")
+  nrsReceiptRef    String?          @map("nrs_receipt_ref")
+  documentUrl      String?          @map("document_url")
+  status           RemittanceStatus @default(PENDING)
+  createdByAdminId String           @map("created_by_admin_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@map("tax_remittances")
+}
+
+model TaxReconciliationRun {
+  id          String   @id @default(uuid())
+  runAt       DateTime @default(now()) @map("run_at")
+  resultsJson Json     @map("results_json")
+  status      String
+
+  @@map("tax_reconciliation_runs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  at         DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}
+
+enum BillPaymentStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
+// Mirrors `CashoutRequest`'s shape. No real biller integration exists yet — status
+// moves PENDING -> PAID/REJECTED via a manual admin action, same as cash-outs.
+model BillPaymentRequest {
+  id               String            @id @default(uuid())
+  userId           String            @map("user_id")
+  user             User              @relation(fields: [userId], references: [id])
+  assetId          String            @map("asset_id")
+  asset            Asset             @relation(fields: [assetId], references: [id])
+  soldTokenAmount  Decimal           @map("sold_token_amount") @db.Decimal(38, 0)
+  whtTokenAmount   Decimal           @default(0) @map("wht_token_amount") @db.Decimal(38, 0)
+  feeNgnAmount     Decimal           @default(0) @map("fee_ngn_amount") @db.Decimal(18, 2)
+  vatNgnAmount     Decimal           @default(0) @map("vat_ngn_amount") @db.Decimal(18, 2)
+  billAmountNgn    Decimal           @map("bill_amount_ngn") @db.Decimal(18, 2)
+  billerCategory   String            @map("biller_category")
+  billerRef        String?           @map("biller_ref")
+  taxTransactionId String?           @map("tax_transaction_id")
+  status           BillPaymentStatus @default(PENDING)
+  processedByAdmin String?           @map("processed_by_admin_id")
+  processedAt      DateTime?         @map("processed_at")
+  notes            String?
+  requestedAt      DateTime          @default(now()) @map("requested_at")
+
+  @@index([status])
+  @@map("bill_payment_requests")
 }

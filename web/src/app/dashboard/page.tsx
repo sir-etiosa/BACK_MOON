@@ -24,6 +24,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useBalanceVisibility } from "@/components/balance-visibility";
 import { api, getToken, clearToken, markExplicitLogout, type Balance, type Withdrawal } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
+import { displaySymbol } from "@/lib/display-symbol";
 import { cn } from "@/lib/utils";
 
 const ASSET_COLOR: Record<string, string> = {
@@ -186,7 +187,7 @@ export default function DashboardPage() {
               className="bg-card border-border flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium"
             >
               <span className={cn("size-1.5 rounded-full", ASSET_COLOR[b.symbol]?.split(" ")[0] ?? "bg-muted-foreground")} />
-              {b.symbol} {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}
+              {displaySymbol(b.symbol)} {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}
             </div>
           ))}
         </div>
@@ -260,7 +261,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-1 items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">Withdraw {asset?.symbol ?? ""}</span>
+                      <span className="text-sm font-medium">Withdraw {asset ? displaySymbol(asset.symbol) : ""}</span>
                       <span className="text-muted-foreground text-xs">{formatActivityDate(w.requestedAt)}</span>
                     </div>
                     <div data-numeric className="flex flex-col items-end">
@@ -308,10 +309,10 @@ export default function DashboardPage() {
                     ASSET_COLOR[b.symbol] ?? "bg-muted text-muted-foreground",
                   )}
                 >
-                  {b.symbol.slice(0, 1)}
+                  {displaySymbol(b.symbol).slice(0, 1)}
                 </div>
                 <div className="flex flex-1 items-center justify-between">
-                  <span className="font-medium">{b.symbol}</span>
+                  <span className="font-medium">{displaySymbol(b.symbol)}</span>
                   <div data-numeric className="flex flex-col items-end">
                     <span className="font-mono text-sm">
                       {balancesHidden ? "***" : fromSmallestUnits(b.balance, b.decimals)}

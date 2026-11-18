@@ -1,142 +1,231 @@
-import { Prisma, LedgerDirection, LedgerRefType } from "@prisma/client";
+import { Prisma, LedgerDirection, LedgerAccountType, PostingRefType, TaxType } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 
 export type Tx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
 export class InsufficientBalanceError extends Error {
-  constructor(userId: string, assetId: string) {
-    super(`Insufficient balance for user ${userId} asset ${assetId}`);
+  constructor(ledgerAccountId: string) {
+    super(`Insufficient balance for ledger account ${ledgerAccountId}`);
   }
 }
 
-interface Movement {
-  userId: string;
+/** System accounts (everything but USER_ASSET) are suspense/clearing/contra accounts —
+ * money in flight or owed, not custodied value — so they're allowed to run negative.
+ * Only USER_ASSET/TREASURY/HOT_WALLET/TAX_WALLET represent real custodied balances and
+ * must never go below zero. */
+function allowNegativeFor(type: LedgerAccountType): boolean {
+  return type !== "USER_ASSET" && type !== "TREASURY" && type !== "HOT_WALLET" && type !== "TAX_WALLET";
+}
+
+function systemAccountCode(type: LedgerAccountType, assetId: string, taxType?: TaxType): string {
+  switch (type) {
+    case "TREASURY":
+      return `treasury:${assetId}`;
+    case "HOT_WALLET":
+      return `hot_wallet:${assetId}`;
+    case "TAX_WALLET":
+      return `tax_wallet:${assetId}`;
+    case "REVENUE_FEES":
+      return `revenue:fees:${assetId}`;
+    case "TAX_WHT":
+      return `tax:WHT:${assetId}`;
+    case "TAX_VAT":
+      return `tax:VAT:${assetId}`;
+    case "TAX_STAMP":
+      return `tax:STAMP:${assetId}`;
+    case "PAYOUT_CLEARING":
+      return `payout:clearing:${assetId}`;
+    case "BILLS_CLEARING":
+      return `bills:clearing:${assetId}`;
+    case "BANK_PAYOUT":
+      return `bank:payout:${assetId}`;
+    case "BILLER_SETTLEMENT":
+      return `biller:settlement:${assetId}`;
+    case "NRS_REMITTED":
+      if (!taxType) throw new Error("NRS_REMITTED account requires a taxType");
+      return `nrs:remitted:${taxType}:${assetId}`;
+    case "EXTERNAL":
+      return `external:${assetId}`;
+    case "USER_ASSET":
+      throw new Error("Use getUserAssetAccountId for USER_ASSET accounts");
+  }
+}
+
+const accountIdCache = new Map<string, string>();
+
+/** Get-or-create a user's per-asset account, memoized in-process. Replaces the old
+ * implicit lazy-upsert that `applyLedgerMovement` used to do on `Balance`. */
+export async function getUserAssetAccountId(userId: string, assetId: string): Promise<string> {
+  const code = `user:${userId}:${assetId}`;
+  const cached = accountIdCache.get(code);
+  if (cached) return cached;
+
+  const account = await prisma.ledgerAccount.upsert({
+    where: { code },
+    create: { code, type: "USER_ASSET", assetId, userId, allowNegative: false },
+    update: {},
+  });
+  await prisma.ledgerAccountBalance.upsert({
+    where: { ledgerAccountId: account.id },
+    create: { ledgerAccountId: account.id, balance: new Prisma.Decimal(0) },
+    update: {},
+  });
+  accountIdCache.set(code, account.id);
+  return account.id;
+}
+
+/** Get-or-create a system (non-user) account — treasury, tax sub-ledgers, revenue,
+ * clearing, etc. — memoized in-process. Replaces `house.ts`'s single memoized house
+ * user id with a general-purpose equivalent for every non-user account type. */
+export async function getSystemAccountId(
+  type: Exclude<LedgerAccountType, "USER_ASSET">,
+  assetId: string,
+  taxType?: TaxType,
+): Promise<string> {
+  const code = systemAccountCode(type, assetId, taxType);
+  const cached = accountIdCache.get(code);
+  if (cached) return cached;
+
+  const account = await prisma.ledgerAccount.upsert({
+    where: { code },
+    create: { code, type, assetId, taxType, allowNegative: allowNegativeFor(type) },
+    update: {},
+  });
+  await prisma.ledgerAccountBalance.upsert({
+    where: { ledgerAccountId: account.id },
+    create: { ledgerAccountId: account.id, balance: new Prisma.Decimal(0) },
+    update: {},
+  });
+  accountIdCache.set(code, account.id);
+  return account.id;
+}
+
+export interface Transfer {
+  fromAccountId: string;
+  toAccountId: string;
   assetId: string;
-  direction: LedgerDirection;
-  amount: Prisma.Decimal | string | number;
-  refType: LedgerRefType;
+  amount: Prisma.Decimal | string | number | bigint;
+  refType: PostingRefType;
   refId: string;
+  transactionId?: string;
+  legIndex?: number;
+}
+
+async function lockAndRead(tx: Tx, ledgerAccountId: string): Promise<Prisma.Decimal> {
+  const locked = await tx.$queryRaw<{ balance: Prisma.Decimal }[]>`
+    SELECT balance FROM ledger_account_balances WHERE ledger_account_id = ${ledgerAccountId} FOR UPDATE
+  `;
+  return new Prisma.Decimal(locked[0].balance);
 }
 
 /**
- * Applies one ledger movement atomically: locks the balance row (SELECT ... FOR UPDATE),
- * mutates it, and writes the matching immutable ledger_entries row in the same DB transaction.
- * Must always be called with a `tx` that came from prisma.$transaction — never on the bare client,
- * or the row lock has nothing to serialize against.
+ * Applies one double-entry transfer atomically: locks both accounts' balance rows
+ * (`SELECT ... FOR UPDATE`, always in canonical id order so two concurrent transfers
+ * touching the same pair of accounts in opposite directions can't deadlock), moves
+ * `amount` from `fromAccountId` to `toAccountId`, writes the paired DEBIT/CREDIT
+ * `LedgerAccountEntry` rows (same dedupe discipline as the legacy ledger — a retried
+ * leg with the same refType+refId+account+direction throws instead of double-applying)
+ * plus one human-readable `Posting` row. Must be called with a `tx` from
+ * `prisma.$transaction` — the row locks are meaningless outside one.
  */
-export async function applyLedgerMovement(tx: Tx, m: Movement): Promise<void> {
-  const amount = new Prisma.Decimal(m.amount);
+export async function applyLedgerTransfer(tx: Tx, t: Transfer): Promise<{ postingId: string }> {
+  const amount = new Prisma.Decimal(typeof t.amount === "bigint" ? t.amount.toString() : t.amount);
   if (amount.lte(0)) {
-    throw new Error("Ledger movement amount must be positive");
+    throw new Error("Transfer amount must be positive");
+  }
+  if (t.fromAccountId === t.toAccountId) {
+    throw new Error("Transfer must move between two different accounts");
   }
 
-  // Row must exist before FOR UPDATE can lock it.
-  await tx.balance.upsert({
-    where: { userId_assetId: { userId: m.userId, assetId: m.assetId } },
-    create: { userId: m.userId, assetId: m.assetId, balance: new Prisma.Decimal(0) },
-    update: {},
-  });
+  const [firstId, secondId] = [t.fromAccountId, t.toAccountId].sort();
+  const balances = new Map<string, Prisma.Decimal>();
+  balances.set(firstId, await lockAndRead(tx, firstId));
+  balances.set(secondId, await lockAndRead(tx, secondId));
 
-  const locked = await tx.$queryRaw<{ balance: Prisma.Decimal }[]>`
-    SELECT balance FROM balances WHERE user_id = ${m.userId} AND asset_id = ${m.assetId} FOR UPDATE
-  `;
-  const current = new Prisma.Decimal(locked[0].balance);
+  const fromAccount = await tx.ledgerAccount.findUniqueOrThrow({ where: { id: t.fromAccountId } });
 
-  const next = m.direction === "CREDIT" ? current.plus(amount) : current.minus(amount);
-  if (next.lt(0)) {
-    throw new InsufficientBalanceError(m.userId, m.assetId);
+  const fromCurrent = balances.get(t.fromAccountId)!;
+  const toCurrent = balances.get(t.toAccountId)!;
+  const fromNext = fromCurrent.minus(amount);
+  const toNext = toCurrent.plus(amount);
+
+  if (fromNext.lt(0) && !fromAccount.allowNegative) {
+    throw new InsufficientBalanceError(t.fromAccountId);
   }
 
-  await tx.balance.update({
-    where: { userId_assetId: { userId: m.userId, assetId: m.assetId } },
-    data: { balance: next },
-  });
+  await tx.ledgerAccountBalance.update({ where: { ledgerAccountId: t.fromAccountId }, data: { balance: fromNext } });
+  await tx.ledgerAccountBalance.update({ where: { ledgerAccountId: t.toAccountId }, data: { balance: toNext } });
 
-  // Unique(refType, refId, userId, direction) makes this idempotent: a retried
-  // credit/debit for the same deposit/withdrawal/trade leg throws instead of double-applying.
-  await tx.ledgerEntry.create({
+  await tx.ledgerAccountEntry.create({
     data: {
-      userId: m.userId,
-      assetId: m.assetId,
-      direction: m.direction,
+      ledgerAccountId: t.fromAccountId,
+      direction: "DEBIT",
       amount,
-      refType: m.refType,
-      refId: m.refId,
-      balanceAfter: next,
+      refType: t.refType,
+      refId: t.refId,
+      balanceAfter: fromNext,
     },
   });
+  await tx.ledgerAccountEntry.create({
+    data: {
+      ledgerAccountId: t.toAccountId,
+      direction: "CREDIT",
+      amount,
+      refType: t.refType,
+      refId: t.refId,
+      balanceAfter: toNext,
+    },
+  });
+
+  const posting = await tx.posting.create({
+    data: {
+      transactionId: t.transactionId,
+      legIndex: t.legIndex ?? 0,
+      fromAccountId: t.fromAccountId,
+      toAccountId: t.toAccountId,
+      assetId: t.assetId,
+      amount,
+      refType: t.refType,
+      refId: t.refId,
+    },
+  });
+
+  return { postingId: posting.id };
 }
 
 export const TX_OPTIONS = { maxWait: 15_000, timeout: 30_000 };
 
 /**
- * Applies several ledger legs in one transaction, always locking the underlying
- * (user, asset) balance rows in a fixed canonical order. Without this, two concurrent
- * multi-leg operations touching the same rows in opposite order (e.g. A->B and B->A)
- * can lock in opposite order and deadlock under load — sorting first makes every
- * caller agree on lock order regardless of which leg is a debit or a credit.
+ * Applies several transfers in one transaction, sorted by the canonical pair of
+ * accounts each one touches — generalizes the legacy `applyLedgerMovements`' "sort by
+ * userId:assetId" rule to avoid deadlock across whichever two accounts a leg moves
+ * between, not just one (userId, assetId) row.
  */
-export async function applyLedgerMovements(tx: Tx, movements: Movement[]): Promise<void> {
-  const ordered = [...movements].sort((a, b) =>
-    `${a.userId}:${a.assetId}`.localeCompare(`${b.userId}:${b.assetId}`),
-  );
-  for (const m of ordered) {
-    await applyLedgerMovement(tx, m);
+export async function applyLedgerTransfers(tx: Tx, transfers: Transfer[]): Promise<{ postingIds: string[] }> {
+  const ordered = [...transfers].sort((a, b) => {
+    const keyA = [a.fromAccountId, a.toAccountId].sort().join(":");
+    const keyB = [b.fromAccountId, b.toAccountId].sort().join(":");
+    return keyA.localeCompare(keyB);
+  });
+
+  const postingIds: string[] = [];
+  for (const t of ordered) {
+    const { postingId } = await applyLedgerTransfer(tx, t);
+    postingIds.push(postingId);
   }
+  return { postingIds };
 }
 
-export async function credit(input: Omit<Movement, "direction">): Promise<void> {
-  await prisma.$transaction(
-    (tx) => applyLedgerMovement(tx, { ...input, direction: "CREDIT" }),
-    TX_OPTIONS,
-  );
-}
-
-export async function debit(input: Omit<Movement, "direction">): Promise<void> {
-  await prisma.$transaction(
-    (tx) => applyLedgerMovement(tx, { ...input, direction: "DEBIT" }),
-    TX_OPTIONS,
-  );
-}
-
-/**
- * Two legs, one atomic transaction: used for internal trades/P2P and any other
- * move where both sides must succeed or both must roll back together.
- */
-export async function transferInternal(input: {
-  fromUserId: string;
-  toUserId: string;
-  assetId: string;
-  amount: Prisma.Decimal | string | number;
-  refType: LedgerRefType;
-  refId: string;
-}): Promise<void> {
-  await prisma.$transaction(
-    (tx) =>
-      applyLedgerMovements(tx, [
-        {
-          userId: input.fromUserId,
-          assetId: input.assetId,
-          direction: "DEBIT",
-          amount: input.amount,
-          refType: input.refType,
-          refId: input.refId,
-        },
-        {
-          userId: input.toUserId,
-          assetId: input.assetId,
-          direction: "CREDIT",
-          amount: input.amount,
-          refType: input.refType,
-          refId: input.refId,
-        },
-      ]),
-    TX_OPTIONS,
-  );
-}
-
-export async function getBalance(userId: string, assetId: string): Promise<Prisma.Decimal> {
-  const row = await prisma.balance.findUnique({ where: { userId_assetId: { userId, assetId } } });
+export async function getAccountBalance(ledgerAccountId: string): Promise<Prisma.Decimal> {
+  const row = await prisma.ledgerAccountBalance.findUnique({ where: { ledgerAccountId } });
   return row?.balance ?? new Prisma.Decimal(0);
 }
+
+/** Convenience wrapper matching the legacy `getBalance(userId, assetId)` signature. */
+export async function getUserAssetBalance(userId: string, assetId: string): Promise<Prisma.Decimal> {
+  const accountId = await getUserAssetAccountId(userId, assetId);
+  return getAccountBalance(accountId);
+}
+
+export { LedgerDirection, PostingRefType };

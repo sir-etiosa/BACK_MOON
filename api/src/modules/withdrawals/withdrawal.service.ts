@@ -1,5 +1,11 @@
 import { prisma } from "../../db/prisma.js";
-import { applyLedgerMovement, TX_OPTIONS, InsufficientBalanceError } from "../../ledger/ledger.service.js";
+import {
+  applyLedgerTransfer,
+  getSystemAccountId,
+  getUserAssetAccountId,
+  TX_OPTIONS,
+  InsufficientBalanceError,
+} from "../../ledger/ledger.service.js";
 
 export { InsufficientBalanceError };
 
@@ -11,11 +17,16 @@ interface RequestInput {
 }
 
 /**
- * Debiting the user's ledger balance at request time *is* the hold — `applyLedgerMovement`
+ * Debiting the user's ledger balance at request time *is* the hold — `applyLedgerTransfer`
  * already refuses to go negative, so two concurrent withdrawal requests can't double-spend
- * the same balance. Rejecting later just credits it back (see rejectWithdrawal).
+ * the same balance. Rejecting later just credits it back (see rejectWithdrawal). Not a
+ * taxable disposal — moving crypto to an address you own isn't in the tax applicability
+ * matrix, so no tax module involvement here.
  */
 export async function requestWithdrawal(input: RequestInput) {
+  const userAccountId = await getUserAssetAccountId(input.userId, input.assetId);
+  const externalAccountId = await getSystemAccountId("EXTERNAL", input.assetId);
+
   return prisma.$transaction(
     async (tx) => {
       const withdrawal = await tx.withdrawal.create({
@@ -28,10 +39,10 @@ export async function requestWithdrawal(input: RequestInput) {
         },
       });
 
-      await applyLedgerMovement(tx, {
-        userId: input.userId,
+      await applyLedgerTransfer(tx, {
+        fromAccountId: userAccountId,
+        toAccountId: externalAccountId,
         assetId: input.assetId,
-        direction: "DEBIT",
         amount: input.amount,
         refType: "WITHDRAWAL",
         refId: withdrawal.id,
@@ -80,20 +91,26 @@ export async function confirmWithdrawal(withdrawalId: string) {
 
 /** Refunds the held balance back to the user and closes the request out. */
 export async function rejectWithdrawal(withdrawalId: string, adminId: string, notes?: string) {
+  const withdrawal = await prisma.withdrawal.findUnique({ where: { id: withdrawalId } });
+  if (!withdrawal) throw new Error("Withdrawal not found");
+
+  const userAccountId = await getUserAssetAccountId(withdrawal.userId, withdrawal.assetId);
+  const externalAccountId = await getSystemAccountId("EXTERNAL", withdrawal.assetId);
+
   return prisma.$transaction(async (tx) => {
-    const withdrawal = await tx.withdrawal.findUnique({ where: { id: withdrawalId } });
-    if (!withdrawal) throw new Error("Withdrawal not found");
-    if (withdrawal.status !== "PENDING" && withdrawal.status !== "APPROVED") {
-      throw new Error(`Cannot reject from status ${withdrawal.status}`);
+    const current = await tx.withdrawal.findUnique({ where: { id: withdrawalId } });
+    if (!current) throw new Error("Withdrawal not found");
+    if (current.status !== "PENDING" && current.status !== "APPROVED") {
+      throw new Error(`Cannot reject from status ${current.status}`);
     }
 
-    await applyLedgerMovement(tx, {
-      userId: withdrawal.userId,
-      assetId: withdrawal.assetId,
-      direction: "CREDIT",
-      amount: withdrawal.amount,
+    await applyLedgerTransfer(tx, {
+      fromAccountId: externalAccountId,
+      toAccountId: userAccountId,
+      assetId: current.assetId,
+      amount: current.amount,
       refType: "WITHDRAWAL",
-      refId: withdrawal.id,
+      refId: current.id,
     });
 
     return tx.withdrawal.update({

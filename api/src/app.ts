@@ -12,6 +12,12 @@ import { cronRoutes } from "./modules/cron/cron.routes.js";
 import { assetRequestRoutes } from "./modules/asset-requests/asset-request.routes.js";
 import { supportRoutes } from "./modules/support/support.routes.js";
 import { cashoutRoutes } from "./modules/cashout/cashout.routes.js";
+import { billRoutes } from "./modules/bills/bill.routes.js";
+import { taxRoutes } from "./modules/tax/tax.routes.js";
+import { adminTaxRoutes } from "./modules/tax/admin-tax.routes.js";
+import { regulatorRoutes } from "./modules/regulator/regulator.routes.js";
+import { treasuryRoutes } from "./modules/treasury/treasury.routes.js";
+import { adminAddressRoutes } from "./modules/wallet/admin-address.routes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -65,6 +71,12 @@ export async function buildApp() {
   await app.register(assetRequestRoutes);
   await app.register(supportRoutes);
   await app.register(cashoutRoutes);
+  await app.register(billRoutes);
+  await app.register(taxRoutes);
+  await app.register(adminTaxRoutes);
+  await app.register(regulatorRoutes);
+  await app.register(treasuryRoutes);
+  await app.register(adminAddressRoutes);
 
   return app;
 }

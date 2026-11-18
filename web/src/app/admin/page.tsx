@@ -28,6 +28,7 @@ import {
   type AdminSupportTicket,
   type AdminAccount,
   type AdminCashoutRequest,
+  type AssetExposureRow,
 } from "@/lib/admin-api";
 import { fromSmallestUnits } from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,23 @@ export default function AdminDashboardPage() {
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [adminCreateLoading, setAdminCreateLoading] = useState(false);
+  const [deleteAdminTarget, setDeleteAdminTarget] = useState<AdminAccount | null>(null);
+  const [adminDeleteLoading, setAdminDeleteLoading] = useState(false);
+
+  const [exposure, setExposure] = useState<AssetExposureRow[] | null>(null);
+  const [exposureLoading, setExposureLoading] = useState(false);
+
+  async function loadExposure() {
+    setExposureLoading(true);
+    try {
+      const { rows } = await adminApi.getTreasuryExposure();
+      setExposure(rows);
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't load exposure.");
+    } finally {
+      setExposureLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!getAdminToken()) {
@@ -103,6 +121,7 @@ export default function AdminDashboardPage() {
         .getAdmins()
         .then((r) => setAdmins(r.admins))
         .catch(handleAuthError);
+      loadExposure();
     }
   }, [router, isOwner]);
 
@@ -244,6 +263,22 @@ export default function AdminDashboardPage() {
     }
   }
 
+  async function handleDeleteAdmin() {
+    if (!deleteAdminTarget) return;
+    setAdminDeleteLoading(true);
+    try {
+      await adminApi.deleteAdmin(deleteAdminTarget.id);
+      const { admins: refreshed } = await adminApi.getAdmins();
+      setAdmins(refreshed);
+      setDeleteAdminTarget(null);
+      toast.success("Admin removed");
+    } catch (err) {
+      toast.error(err instanceof AdminApiError ? err.message : "Couldn't remove admin.");
+    } finally {
+      setAdminDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-5 py-6">
       <div className="flex items-center justify-between">
@@ -264,6 +299,7 @@ export default function AdminDashboardPage() {
           <TabsTrigger value="requests">Asset requests</TabsTrigger>
           {isOwner && <TabsTrigger value="rate">Rate</TabsTrigger>}
           {isOwner && <TabsTrigger value="admins">Admins</TabsTrigger>}
+          {isOwner && <TabsTrigger value="exposure">Exposure</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="support" className="flex flex-col gap-2 pt-4">
@@ -496,11 +532,78 @@ export default function AdminDashboardPage() {
                     className={cn("flex items-center justify-between gap-2 py-3.5", i > 0 && "border-border border-t")}
                   >
                     <span className="text-sm font-medium">{a.email}</span>
-                    <span className="label-eyebrow bg-muted text-muted-foreground rounded-full px-2 py-0.5">
-                      {a.role}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="label-eyebrow bg-muted text-muted-foreground rounded-full px-2 py-0.5">
+                        {a.role}
+                      </span>
+                      <Button size="xs" variant="destructive" onClick={() => setDeleteAdminTarget(a)}>
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
+        {isOwner && (
+          <TabsContent value="exposure" className="flex flex-col gap-3 pt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground text-xs">
+                On-chain = what&rsquo;s actually sitting in deposit addresses right now. User owed = what the ledger
+                says you&rsquo;d need to pay out if everyone withdrew. Treasury = exposure accumulated from
+                swaps/cashouts/bills, not yet hedged. Negative gap = you&rsquo;re short — hedge on Binance.
+              </p>
+              <Button size="sm" variant="secondary" disabled={exposureLoading} onClick={loadExposure}>
+                {exposureLoading ? "Refreshing..." : "Refresh"}
+              </Button>
+            </div>
+            {exposure === null ? (
+              <p className="text-muted-foreground text-sm">Loading...</p>
+            ) : (
+              <div className="bg-card border-border overflow-x-auto rounded-2xl border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-border border-b text-left">
+                      <th className="px-4 py-2 font-medium">Asset</th>
+                      <th className="px-3 py-2 text-right font-medium">On-chain</th>
+                      <th className="px-3 py-2 text-right font-medium">User owed</th>
+                      <th className="px-3 py-2 text-right font-medium">Treasury exposure</th>
+                      <th className="px-4 py-2 text-right font-medium">Gap</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exposure.map((r, i) => {
+                      const gap = r.gapMinor !== null ? BigInt(r.gapMinor) : null;
+                      return (
+                        <tr key={r.assetId} className={cn(i > 0 && "border-border border-t")}>
+                          <td className="px-4 py-2.5 font-medium">
+                            {r.symbol}
+                            <span className="text-muted-foreground ml-1 text-xs">/{r.chain}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono" title={r.onchainNote}>
+                            {r.onchainTotalMinor !== null ? fromSmallestUnits(r.onchainTotalMinor, r.decimals) : "N/A"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono">
+                            {fromSmallestUnits(r.userLedgerTotalMinor, r.decimals)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono">
+                            {fromSmallestUnits(r.treasuryLedgerBalanceMinor, r.decimals)}
+                          </td>
+                          <td
+                            className={cn(
+                              "px-4 py-2.5 text-right font-mono font-semibold",
+                              gap === null ? "text-muted-foreground" : gap < BigInt(0) ? "text-destructive" : "text-primary",
+                            )}
+                          >
+                            {gap !== null ? fromSmallestUnits(gap.toString(), r.decimals) : "N/A"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </TabsContent>
@@ -599,6 +702,27 @@ export default function AdminDashboardPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteAdminTarget !== null} onOpenChange={(open) => !open && setDeleteAdminTarget(null)}>
+        <DialogContent className="max-w-[320px]">
+          <DialogHeader>
+            <DialogTitle>Remove admin</DialogTitle>
+            <DialogDescription>
+              This permanently removes {deleteAdminTarget?.email} from the admin panel. This can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              disabled={adminDeleteLoading}
+              className="h-11 w-full font-semibold"
+              onClick={handleDeleteAdmin}
+            >
+              {adminDeleteLoading ? "Removing..." : "Remove admin"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -13,6 +13,15 @@ async function main() {
     return;
   }
 
+  const ledgerAccounts = await prisma.ledgerAccount.findMany({ where: { userId: { in: userIds } } });
+  const accountIds = ledgerAccounts.map((a) => a.id);
+  await prisma.ledgerAccountEntry.deleteMany({ where: { ledgerAccountId: { in: accountIds } } });
+  await prisma.posting.deleteMany({
+    where: { OR: [{ fromAccountId: { in: accountIds } }, { toAccountId: { in: accountIds } }] },
+  });
+  await prisma.ledgerAccountBalance.deleteMany({ where: { ledgerAccountId: { in: accountIds } } });
+  await prisma.ledgerAccount.deleteMany({ where: { id: { in: accountIds } } });
+
   await prisma.ledgerEntry.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.balance.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.deposit.deleteMany({ where: { userId: { in: userIds } } });

@@ -1,6 +1,11 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
-import { credit, transferInternal, InsufficientBalanceError } from "../ledger/ledger.service.js";
+import {
+  applyLedgerTransfer,
+  getSystemAccountId,
+  getUserAssetAccountId,
+  InsufficientBalanceError,
+  TX_OPTIONS,
+} from "../ledger/ledger.service.js";
 
 const NUM_USERS = 8;
 const NUM_CONCURRENT_TRANSFERS = 60;
@@ -19,16 +24,24 @@ async function main() {
     ),
   );
 
-  // Fund every user with an identical starting balance via an idempotent, uniquely-refId'd credit.
+  const externalAccountId = await getSystemAccountId("EXTERNAL", assetId);
+  const userAccountIds = await Promise.all(users.map((u) => getUserAssetAccountId(u.id, assetId)));
+
+  // Fund every user with an identical starting balance via an idempotent, uniquely-refId'd transfer.
   await Promise.all(
-    users.map((u, i) =>
-      credit({
-        userId: u.id,
-        assetId: assetId,
-        amount: INITIAL_CREDIT.toString(),
-        refType: "ADJUSTMENT",
-        refId: `${testTag}-seed-${i}`,
-      }),
+    userAccountIds.map((accountId, i) =>
+      prisma.$transaction(
+        (tx) =>
+          applyLedgerTransfer(tx, {
+            fromAccountId: externalAccountId,
+            toAccountId: accountId,
+            assetId,
+            amount: INITIAL_CREDIT.toString(),
+            refType: "ADJUSTMENT",
+            refId: `${testTag}-seed-${i}`,
+          }),
+        TX_OPTIONS,
+      ),
     ),
   );
 
@@ -38,19 +51,24 @@ async function main() {
   let rejectedForInsufficientFunds = 0;
 
   function runOne(i: number) {
-    const from = users[Math.floor(Math.random() * users.length)];
-    let to = users[Math.floor(Math.random() * users.length)];
-    while (to.id === from.id) to = users[Math.floor(Math.random() * users.length)];
+    const fromIdx = Math.floor(Math.random() * userAccountIds.length);
+    let toIdx = Math.floor(Math.random() * userAccountIds.length);
+    while (toIdx === fromIdx) toIdx = Math.floor(Math.random() * userAccountIds.length);
     const amount = Math.floor(Math.random() * 5000) + 1;
 
-    return transferInternal({
-      fromUserId: from.id,
-      toUserId: to.id,
-      assetId: assetId,
-      amount: amount.toString(),
-      refType: "TRADE",
-      refId: `${testTag}-transfer-${i}`,
-    })
+    return prisma
+      .$transaction(
+        (tx) =>
+          applyLedgerTransfer(tx, {
+            fromAccountId: userAccountIds[fromIdx],
+            toAccountId: userAccountIds[toIdx],
+            assetId,
+            amount: amount.toString(),
+            refType: "SWAP",
+            refId: `${testTag}-transfer-${i}`,
+          }),
+        TX_OPTIONS,
+      )
       .then(() => {
         succeeded++;
       })
@@ -71,44 +89,83 @@ async function main() {
     await Promise.all(batch);
   }
 
-  const balances = await prisma.balance.findMany({
-    where: { userId: { in: users.map((u) => u.id) }, assetId: assetId },
-  });
-  const totalAfter = balances.reduce((sum, b) => sum + BigInt(b.balance.toString()), 0n);
+  // EXTERNAL is a shared, permanent system account — every past run of this script
+  // (and every real deposit/withdrawal in production) leaves its own entries on it
+  // forever. Scoping by this run's own refId prefix (rather than "every entry ever
+  // posted to these accounts") is what makes the invariant check about *this run's*
+  // activity instead of accumulating false mismatches across repeated runs.
+  const scopedAccountIds = [...userAccountIds, externalAccountId];
 
-  const ledgerEntries = await prisma.ledgerEntry.findMany({
-    where: { userId: { in: users.map((u) => u.id) }, assetId: assetId },
+  const balances = await prisma.ledgerAccountBalance.findMany({
+    where: { ledgerAccountId: { in: scopedAccountIds } },
+  });
+  const totalAfterUsers = balances
+    .filter((b) => userAccountIds.includes(b.ledgerAccountId))
+    .reduce((sum, b) => sum + BigInt(b.balance.toString()), 0n);
+
+  const entries = await prisma.ledgerAccountEntry.findMany({
+    where: { ledgerAccountId: { in: scopedAccountIds }, refId: { startsWith: testTag } },
   });
 
   const recomputed = new Map<string, bigint>();
-  for (const u of users) recomputed.set(u.id, 0n);
-  for (const entry of ledgerEntries) {
-    const current = recomputed.get(entry.userId) ?? 0n;
+  for (const id of scopedAccountIds) recomputed.set(id, 0n);
+  let totalCredits = 0n;
+  let totalDebits = 0n;
+  for (const entry of entries) {
+    const current = recomputed.get(entry.ledgerAccountId) ?? 0n;
     const delta = BigInt(entry.amount.toString());
-    recomputed.set(entry.userId, entry.direction === "CREDIT" ? current + delta : current - delta);
+    if (entry.direction === "CREDIT") {
+      recomputed.set(entry.ledgerAccountId, current + delta);
+      totalCredits += delta;
+    } else {
+      recomputed.set(entry.ledgerAccountId, current - delta);
+      totalDebits += delta;
+    }
   }
 
+  // Only the ephemeral per-run user accounts have a *complete* history scoped by
+  // testTag (they're brand new) — EXTERNAL's real balance reflects every run ever,
+  // so it's excluded from this specific balance-equals-sum-of-its-own-entries check
+  // (its contribution to the credits==debits check above already covers it).
   let mismatches = 0;
-  for (const b of balances) {
-    const fromLedger = recomputed.get(b.userId);
+  for (const b of balances.filter((b) => userAccountIds.includes(b.ledgerAccountId))) {
+    const fromLedger = recomputed.get(b.ledgerAccountId);
     if (fromLedger === undefined || fromLedger !== BigInt(b.balance.toString())) {
       mismatches++;
       console.error(
-        `MISMATCH user=${b.userId} balance=${b.balance.toString()} recomputedFromLedger=${fromLedger}`,
+        `MISMATCH account=${b.ledgerAccountId} balance=${b.balance.toString()} recomputedFromLedger=${fromLedger}`,
       );
     }
   }
 
   console.log(`Concurrent transfers attempted: ${NUM_CONCURRENT_TRANSFERS}`);
   console.log(`Succeeded: ${succeeded}, rejected (insufficient funds): ${rejectedForInsufficientFunds}`);
-  console.log(`Total balance before: ${totalBefore}, after: ${totalAfter} (must match — transfers net to zero)`);
+  console.log(
+    `Total user balance before: ${totalBefore}, after: ${totalAfterUsers} (must match — transfers net to zero among users)`,
+  );
+  console.log(
+    `Total CREDIT entries: ${totalCredits}, total DEBIT entries: ${totalDebits} (must match — universal double-entry invariant, now spanning the EXTERNAL contra account too)`,
+  );
   console.log(`Ledger-vs-balance mismatches: ${mismatches} (must be zero)`);
 
-  await prisma.ledgerEntry.deleteMany({ where: { userId: { in: users.map((u) => u.id) } } });
-  await prisma.balance.deleteMany({ where: { userId: { in: users.map((u) => u.id) } } });
+  // This run's ephemeral user accounts (and whatever they hold) are about to be
+  // deleted outright, not transferred anywhere — so unwind EXTERNAL's resulting
+  // balance with a direct adjustment rather than a transfer (there's no single
+  // counterparty holding the combined total to debit). Keeps repeated runs from
+  // leaving EXTERNAL drifting further negative forever.
+  await prisma.ledgerAccountEntry.deleteMany({ where: { refId: { startsWith: testTag } } });
+  await prisma.ledgerAccountBalance.update({
+    where: { ledgerAccountId: externalAccountId },
+    data: { balance: { increment: totalBefore.toString() } },
+  });
+  await prisma.posting.deleteMany({
+    where: { OR: [{ fromAccountId: { in: userAccountIds } }, { toAccountId: { in: userAccountIds } }] },
+  });
+  await prisma.ledgerAccountBalance.deleteMany({ where: { ledgerAccountId: { in: userAccountIds } } });
+  await prisma.ledgerAccount.deleteMany({ where: { id: { in: userAccountIds } } });
   await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } });
 
-  if (totalAfter !== totalBefore || mismatches > 0) {
+  if (totalAfterUsers !== totalBefore || mismatches > 0 || totalCredits !== totalDebits) {
     console.error("LEDGER INVARIANT TEST FAILED");
     process.exit(1);
   }

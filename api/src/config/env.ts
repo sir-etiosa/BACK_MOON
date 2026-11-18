@@ -16,6 +16,9 @@ const envSchema = z.object({
   BLOCKCYPHER_TOKEN: z.string().optional(),
   CRON_SECRET: z.string().min(16),
   ADMIN_EMAIL: z.string().email().optional(),
+  MONERO_WALLET_RPC_URL: z.string().optional(),
+  MONERO_WALLET_RPC_USER: z.string().optional(),
+  MONERO_WALLET_RPC_PASSWORD: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

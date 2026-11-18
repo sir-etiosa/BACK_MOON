@@ -1,14 +1,15 @@
 import { prisma } from "../db/prisma.js";
-import { getHouseUserId } from "../ledger/house.js";
 
-// Wipes the house account's ledger history, built up only from dev-credit/test-swap
+// Wipes every treasury account's ledger history, built up only from dev-credit/test-swap
 // activity before any real deposit/withdrawal/swap ever happened. Safe only because
-// nothing real has touched the house account yet.
+// nothing real has touched treasury yet. The house `User` concept is retired — treasury
+// is now a `LedgerAccount` of type TREASURY per asset.
 async function main() {
-  const houseId = await getHouseUserId();
-  await prisma.ledgerEntry.deleteMany({ where: { userId: houseId } });
-  await prisma.balance.deleteMany({ where: { userId: houseId } });
-  console.log("House account ledger/balances reset to zero.");
+  const treasuryAccounts = await prisma.ledgerAccount.findMany({ where: { type: "TREASURY" } });
+  const ids = treasuryAccounts.map((a) => a.id);
+  await prisma.ledgerAccountEntry.deleteMany({ where: { ledgerAccountId: { in: ids } } });
+  await prisma.ledgerAccountBalance.updateMany({ where: { ledgerAccountId: { in: ids } }, data: { balance: 0 } });
+  console.log("Treasury account ledger/balances reset to zero.");
 }
 
 main()

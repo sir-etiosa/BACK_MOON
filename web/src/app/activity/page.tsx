@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { api, getToken, type Balance, type Withdrawal } from "@/lib/api";
 import { fromSmallestUnits } from "@/lib/units";
+import { displaySymbol } from "@/lib/display-symbol";
 import { useLoading } from "@/components/loading-overlay";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +89,7 @@ export default function ActivityPage() {
                 </div>
                 <div className="flex flex-1 items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">Withdraw {asset?.symbol ?? ""}</span>
+                    <span className="text-sm font-medium">Withdraw {asset ? displaySymbol(asset.symbol) : ""}</span>
                     <span className="text-muted-foreground text-xs">{formatActivityDate(w.requestedAt)}</span>
                   </div>
                   <div data-numeric className="flex flex-col items-end">
