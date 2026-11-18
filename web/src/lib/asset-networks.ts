@@ -13,6 +13,7 @@ export const ASSET_NETWORKS: Record<string, AssetNetwork[]> = {
   USDC: [
     { label: "Ethereum (ERC20)", assetChain: "evm", addressChain: "evm" },
     { label: "Base", assetChain: "base", addressChain: "evm" },
+    { label: "Solana (SPL)", assetChain: "solana", addressChain: "solana" },
   ],
   ETH: [
     { label: "Ethereum", assetChain: "evm", addressChain: "evm" },

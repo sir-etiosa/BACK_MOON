@@ -121,7 +121,7 @@ export default function AdminDashboardPage() {
         .getAdmins()
         .then((r) => setAdmins(r.admins))
         .catch(handleAuthError);
-      loadExposure();
+      void Promise.resolve().then(() => loadExposure());
     }
   }, [router, isOwner]);
 

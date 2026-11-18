@@ -107,7 +107,7 @@ export default function DashboardPage() {
 
   const totalUsd = balances?.reduce((sum, b) => sum + (b.usdValue ? Number(b.usdValue) : 0), 0) ?? null;
   const totalNgn = totalUsd !== null && ngnRate !== null ? totalUsd * ngnRate : null;
-  const nonZeroBalances = balances?.filter((b) => b.balance !== "0") ?? [];
+  const nonZeroBalances = balances?.filter((b) => b.balance !== "0" || b.symbol === "XCH") ?? [];
   const assetById = new Map((balances ?? []).map((b) => [b.id, b]));
 
   // One row per symbol even when it spans multiple chains (e.g. ETH on Ethereum + Base).
