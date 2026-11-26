@@ -1,0 +1,23 @@
+[Unit]
+Description=MoonXch deposit watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Set this to the user that owns /opt/moon-xch-watcher
+User=root
+WorkingDirectory=/opt/moon-xch-watcher
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/moon-xch-watcher/.env
+# Journald captures the JSON log lines; these just make them easier to read.
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -18,6 +18,11 @@ build/
 # Generated
 api/src/scripts/phone/derive-xpubs-bundle.js
 
+# Standalone deposit watcher — deployed to the VPS on its own, not part of this repo's build
+api/src/watcher/node_modules/
+api/src/watcher/dist/
+api/src/watcher/.env
+
 # Logs
 *.log
 npm-debug.log*

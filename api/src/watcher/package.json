@@ -1,0 +1,32 @@
+{
+  "name": "moon-xch-deposit-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone deposit watcher for MoonXch — polls chains and credits deposits. Replaces the GitHub Actions cron.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "once": "tsx src/index.ts --once",
+    "test": "tsx src/selftest.ts",
+    "build:once": "npm run build && node dist/index.js --once"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
+    "dotenv": "^16.4.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
