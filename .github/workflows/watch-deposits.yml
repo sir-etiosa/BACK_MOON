@@ -15,9 +15,11 @@ name: Watch for deposits
 #   API_BASE_URL  — e.g. https://your-app.vercel.app (no trailing slash)
 #   CRON_SECRET   — must match CRON_SECRET in the API's environment
 
+# Schedule DISABLED: deposit polling now runs on the VPS (pm2 "deposit-watcher",
+# from api/src/watcher). Running both would double-poll. Manual trigger kept as a fallback.
 on:
-  schedule:
-    - cron: "*/2 * * * *"
+  # schedule:
+  #   - cron: "*/2 * * * *"
   workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
 
 jobs:
